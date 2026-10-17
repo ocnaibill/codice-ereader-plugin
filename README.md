@@ -1,27 +1,41 @@
 # codice-ereader-plugin
 
-Plugin do Códice para o KOReader (Kindle com jailbreak, no começo). Plano e decisões: issue [ocnaibill/codice#327](https://github.com/ocnaibill/codice/issues/327). Licença AGPLv3, como o KOReader e o Códice.
+Plugin do [Códice](https://github.com/ocnaibill/codice) para o KOReader (Kindle com jailbreak, no começo). Conecta o leitor à sua instância por um **código aprovado no site** (sem digitar senha na tela e-ink) e mantém no aparelho a configuração do catálogo (OPDS) e da sincronização de progresso (KOSync). Plano e decisões: issue [ocnaibill/codice#327](https://github.com/ocnaibill/codice/issues/327) e a proposta `docs/Codice_Proposta_Pareamento_Leitor_2026-10-17.md` do Códice. Licença AGPLv3, como o KOReader e o Códice.
 
-**Estado: protótipo.** Ele só responde a quatro perguntas no aparelho, antes de se escrever o plugin de verdade.
+**Estado:** a lógica (`codice_core.lua`) tem testes; as telas e o pareamento **ainda não foram testados num aparelho**. Testado antes, num Kindle 10ª geração com KOReader v2026.07.2: HTTPS com a instância, configuração do OPDS ao vivo, capas numa lista e eventos de anotação (o protótipo, hoje em *Diagnóstico*).
 
-## Instalar o protótipo (Kindle com KOReader)
+## Instalar
 
-1. Tenha no aparelho o `opds.lua` que o Códice gera em *Minha conta → Aplicativos* (já em `koreader/settings/opds.lua`). O protótipo lê o endereço e o acesso dali; nada fica gravado no plugin.
-2. Ligue o Kindle ao computador por USB e copie a pasta `plugins/codice.koplugin` para `koreader/plugins/` (fica `koreader/plugins/codice.koplugin/main.lua`).
-3. Ejete o Kindle, abra o KOReader (reinicie se já estava aberto) e ligue o Wi-Fi.
-4. Menu superior → ferramentas (ícone de engrenagem/chave) → **Mais ferramentas → Códice (protótipo)**.
+1. Ligue o Kindle ao computador por USB e copie a pasta `plugins/codice.koplugin` para `koreader/plugins/` (fica `koreader/plugins/codice.koplugin/main.lua`).
+2. Ejete o Kindle, abra o KOReader (reinicie se já estava aberto) e ligue o Wi-Fi.
 
-## O que testar, nesta ordem
+## Conectar
 
-| Item | O que fazer | O que me contar |
-|---|---|---|
-| 0. Ambiente | tocar | a versão do KOReader e o que aparece |
-| 1. Conexão | tocar (com Wi-Fi) | o código HTTP, o tempo e quantas entradas |
-| 2. Configuração ao vivo | tocar; depois abrir **Catálogo OPDS** sem reiniciar | se a entrada "Códice (protótipo)" aparece na lista |
-| 2b. KOSync | abrir um livro e repetir o item 2 | o servidor que ele mostra |
-| 3. Capas numa lista | tocar (com Wi-Fi) | se as capas aparecem, o aspecto e quanto demora |
-| 4. Anotações | abrir um livro, destacar um trecho, voltar e abrir **5. Ver o log** | as linhas "4 anotações" |
+1. Menu superior (ferramentas) → **Mais ferramentas → Códice → Conectar**.
+2. Digite o endereço da sua instância (por exemplo `codice.exemplo.com`). O leitor mostra um código de oito letras e números; **Mostrar QR** mostra o endereço de aprovação como QR.
+3. No site: **Minha conta → Aplicativos → Conectar um leitor** (ou leia o QR), digite o código, confira o aparelho e **Aprove**.
+4. O leitor recebe sozinho o acesso e a configuração: o catálogo "Códice" aparece no **Catálogo OPDS** e a sincronização de progresso fica pronta (abra um livro e vire umas páginas). Se você já abriu um livro nesta sessão, reinicie o KOReader uma vez.
 
-Tudo o que o plugin faz fica em `koreader/codice_proto.log`; se preferir, cole o conteúdo desse arquivo.
+Depois disso, quando o Wi-Fi volta (no máximo a cada 6 horas), o plugin pergunta à instância se a configuração mudou e aplica só o que mudou. **Códice → Atualizar a configuração** faz isso na hora. **Desconectar este leitor** tira o catálogo e a sincronização do aparelho; para tirar o acesso do servidor, remova-o em Aplicativos, no site.
 
-Para desfazer o teste 2: no Catálogo OPDS, mantenha o dedo sobre a entrada "Códice (protótipo)" e apague, ou remova a pasta do plugin.
+## O que o plugin guarda
+
+`koreader/settings/codice.lua` guarda o endereço, o usuário e o acesso (a senha curta do leitor, que você revoga em Aplicativos). O KOReader também guarda esse acesso em `settings/opds.lua` e a chave dele em `settings/kosync.lua`, como sempre fez com qualquer servidor.
+
+## Diagnóstico
+
+**Códice → Diagnóstico (protótipo)** tem os testes do protótipo (conexão, configuração ao vivo, capas, eventos de anotação). Tudo fica em `koreader/codice_proto.log`.
+
+## Desenvolvimento
+
+```bash
+luajit tests/run.lua      # a lógica que não precisa do KOReader
+```
+
+| Arquivo | O que tem |
+|---|---|
+| `codice_core.lua` | endereço, versões, o que cada resposta do servidor significa, o que se escreve no OPDS e no KOSync (puro, testado) |
+| `codice_http.lua` | pedidos JSON com os tempos do KOReader |
+| `codice_pairing.lua` | o fluxo na tela: endereço, código, QR, espera da aprovação |
+| `main.lua` | o plugin: menu, guardar o acesso, aplicar a configuração, atualizar quando a rede volta |
+| `codice_diag.lua` | os testes do protótipo |

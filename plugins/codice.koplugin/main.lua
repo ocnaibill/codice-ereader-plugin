@@ -1,327 +1,223 @@
 --[[--
-Protótipo do plugin do Códice para o KOReader (issue ocnaibill/codice#327).
-
-Responde, no aparelho, às perguntas que decidem se dá para fazer o leitor sem fork:
-  1. um plugin fala HTTPS com a instância, com o acesso que o Códice já gera?
-  2. a configuração do OPDS e do KOSync se aplica ao vivo, sem reiniciar?
-  3. dá para desenhar capas numa lista própria?
-  4. o plugin recebe os eventos de anotação do leitor?
-
-Nada aqui grava senha nem token: os dados da instância vêm do `settings/opds.lua` que o Códice já gera. Tudo o que o plugin faz fica
-em `codice_proto.log`, na pasta do KOReader.
+Plugin do Códice para o KOReader: conecta o leitor a uma instância do Códice por um código aprovado no site e mantém no aparelho a
+configuração do catálogo (OPDS) e da sincronização de progresso (KOSync). Issue ocnaibill/codice#327, DEC-194.
 ]]--
 
-local Blitbuffer = require("ffi/blitbuffer")
-local CenterContainer = require("ui/widget/container/centercontainer")
 local DataStorage = require("datastorage")
-local Device = require("device")
-local Font = require("ui/font")
-local FrameContainer = require("ui/widget/container/framecontainer")
-local Geom = require("ui/geometry")
-local GestureRange = require("ui/gesturerange")
-local HorizontalGroup = require("ui/widget/horizontalgroup")
-local HorizontalSpan = require("ui/widget/horizontalspan")
-local ImageWidget = require("ui/widget/imagewidget")
 local InfoMessage = require("ui/widget/infomessage")
-local InputContainer = require("ui/widget/container/inputcontainer")
 local LuaSettings = require("luasettings")
 local NetworkMgr = require("ui/network/manager")
-local Size = require("ui/size")
-local TextBoxWidget = require("ui/widget/textboxwidget")
-local TextViewer = require("ui/widget/textviewer")
+local Notification = require("ui/widget/notification")
 local UIManager = require("ui/uimanager")
-local VerticalGroup = require("ui/widget/verticalgroup")
-local VerticalSpan = require("ui/widget/verticalspan")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
-local ltn12 = require("ltn12")
 local logger = require("logger")
-local socket = require("socket")
-local socketutil = require("socketutil")
-local http = require("socket.http")
-local Screen = Device.screen
+local md5 = require("ffi/sha2").md5
 
-local LOG_FILE = DataStorage:getDataDir() .. "/codice_proto.log"
-local CACHE_DIR = DataStorage:getDataDir() .. "/cache/codice_proto"
-local PROTO_TITLE = "Códice (protótipo)"
+local core = require("codice_core")
+local api = require("codice_http")
+local Diag = require("codice_diag")
+local Pairing = require("codice_pairing")
 
-local function log(...)
-    local parts = {}
-    for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end
-    local line = os.date("%Y-%m-%d %H:%M:%S") .. "  " .. table.concat(parts, " ")
-    logger.info("codice-proto:", line)
-    local f = io.open(LOG_FILE, "a")
-    if f then
-        f:write(line, "\n")
-        f:close()
-    end
-    return line
-end
-
--- ---------------------------------------------------------------- the instance
-
---- The server the Códice generated in settings/opds.lua: the one with an /opds/ address and a user.
-local function findServer()
-    local settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/opds.lua")
-    for _, server in ipairs(settings:readSetting("servers") or {}) do
-        if server.url and server.url:find("/opds/", 1, true) and server.username and server.username ~= "" and server.title ~= PROTO_TITLE then
-            return server
-        end
-    end
-    return nil
-end
-
-local function originOf(url)
-    return url:match("^(https?://[^/]+)")
-end
-
-local function feedUrl(server, name)
-    return (server.url:gsub("/catalog/?$", "")) .. "/" .. name
-end
-
---- GET with the access of the server. Returns code, body (or nil, error).
-local function get(url, server, sink)
-    local chunks = {}
-    socketutil:set_timeout(15, 45)
-    local code, _, status = socket.skip(1, http.request{
-        url = url,
-        method = "GET",
-        user = server.username,
-        password = server.password,
-        sink = sink or socketutil.table_sink(chunks),
-        headers = { ["User-Agent"] = "Codice-proto/0" },
-    })
-    socketutil:reset_timeout()
-    if type(code) ~= "number" then return nil, tostring(code or status) end
-    return code, table.concat(chunks)
-end
-
-local function entriesOf(body)
-    local out = {}
-    for entry in body:gmatch("<entry>(.-)</entry>") do
-        local title = entry:match("<title>(.-)</title>") or "?"
-        local thumb
-        for tag in entry:gmatch("<link[^>]*>") do
-            if tag:find("image/thumbnail", 1, true) then thumb = tag:match('href="([^"]+)"') end
-        end
-        out[#out + 1] = {
-            title = (title:gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("&#39;", "'")),
-            thumb = thumb and thumb:gsub("&amp;", "&") or nil,
-        }
-    end
-    return out
-end
-
--- ---------------------------------------------------------------- a list with covers
-
-local CoverList = InputContainer:extend{
-    modal = true,
-    rows = nil, -- { { title =, file = } }
-}
-
-function CoverList:init()
-    local width, height = Screen:getWidth(), Screen:getHeight()
-    local thumb_h = Screen:scaleBySize(120)
-    local thumb_w = math.floor(thumb_h * 2 / 3)
-    local gap = Screen:scaleBySize(12)
-    local list = VerticalGroup:new{ align = "left" }
-    list[#list + 1] = TextBoxWidget:new{
-        text = PROTO_TITLE .. ": capas numa lista (toque para fechar)",
-        face = Font:getFace("cfont", 18),
-        width = width - 2 * gap,
-    }
-    list[#list + 1] = VerticalSpan:new{ width = gap }
-    for _, row in ipairs(self.rows) do
-        local cover
-        if row.file then
-            cover = ImageWidget:new{ file = row.file, width = thumb_w, height = thumb_h, scale_factor = 0 }
-        else
-            cover = VerticalSpan:new{ width = thumb_h } -- no cover: keeps the height of the row
-        end
-        list[#list + 1] = HorizontalGroup:new{
-            align = "center",
-            cover,
-            HorizontalSpan:new{ width = gap },
-            TextBoxWidget:new{ text = row.title, face = Font:getFace("cfont", 22), width = width - thumb_w - 3 * gap },
-        }
-        list[#list + 1] = VerticalSpan:new{ width = gap }
-    end
-    self.ges_events.TapClose = { GestureRange:new{ ges = "tap", range = Geom:new{ x = 0, y = 0, w = width, h = height } } }
-    self[1] = FrameContainer:new{
-        background = Blitbuffer.COLOR_WHITE,
-        bordersize = 0,
-        padding = gap,
-        width = width,
-        height = height,
-        list,
-    }
-end
-
-function CoverList:onTapClose()
-    UIManager:close(self)
-    return true
-end
-
-function CoverList:onShow()
-    UIManager:setDirty(self, function() return "ui", self[1].dimen end)
-end
-
-function CoverList:onCloseWidget()
-    UIManager:setDirty(nil, "full")
-end
-
--- ---------------------------------------------------------------- the plugin
+local SYNC_EVERY = 6 * 3600 -- the configuration is asked again at most this often, when the network comes back
 
 local Codice = WidgetContainer:extend{
     name = "codice",
     is_doc_only = false,
-    annotation_events = 0,
 }
 
 function Codice:init()
+    self.settings_file = DataStorage:getSettingsDir() .. "/codice.lua"
     self.ui.menu:registerToMainMenu(self)
 end
 
-function Codice:say(text)
-    UIManager:show(InfoMessage:new{ text = text, timeout = 15 })
+-- ---------------------------------------------------------------- what is kept
+
+function Codice:store()
+    if not self._store then self._store = LuaSettings:open(self.settings_file) end
+    return self._store
 end
 
-function Codice:addToMainMenu(menu_items)
-    menu_items.codice_proto = {
-        text = PROTO_TITLE,
-        sorting_hint = "more_tools",
-        sub_item_table = {
-            { text = "0. Ambiente", callback = function() self:testEnvironment() end },
-            { text = "1. Conexão com a instância (HTTPS)", callback = function() self:testConnection() end },
-            { text = "2. Configuração ao vivo (OPDS e KOSync)", callback = function() self:testLiveConfig() end },
-            { text = "3. Capas numa lista", callback = function() self:testCovers() end },
-            { text = "4. Eventos de anotação (veja o log)", callback = function() self:testAnnotations() end },
-            { text = "5. Ver o log", callback = function() self:showLog() end },
-        },
-    }
+--- { url, username, token, etag, synced_at } or nil when this reader is not connected.
+function Codice:connection()
+    local c = self:store():readSetting("connection")
+    if type(c) == "table" and c.url and c.username and c.token then return c end
+    return nil
 end
 
-function Codice:testEnvironment()
-    local Version = require("version")
-    local lines = {
-        "KOReader: " .. tostring(Version:getCurrentRevision()),
-        "Aparelho: " .. tostring(Device.model) .. (Device:isKindle() and " (Kindle)" or ""),
-        "Tela: " .. Screen:getWidth() .. "x" .. Screen:getHeight(),
-        "Dentro de um livro: " .. tostring(self.ui.document ~= nil),
-        "ui.opds existe: " .. tostring(self.ui.opds ~= nil),
-        "ui.kosync existe: " .. tostring(self.ui.kosync ~= nil) .. " (só dentro de um livro)",
-        "Servidor do Códice em opds.lua: " .. tostring(findServer() and findServer().url or "nenhum"),
-    }
-    self:say(log("ambiente | " .. table.concat(lines, " | ")):gsub(" | ", "\n"))
+function Codice:say(text, timeout)
+    UIManager:show(InfoMessage:new{ text = text, timeout = timeout })
 end
 
-function Codice:testConnection()
-    local server = findServer()
-    if not server then return self:say("Nenhum servidor do Códice em settings/opds.lua. Copie o opds.lua que o Códice gera.") end
-    NetworkMgr:runWhenOnline(function()
-        local started = socket.gettime()
-        local code, body = get(feedUrl(server, "recent"), server)
-        local took = socket.gettime() - started
-        if not code then
-            return self:say(log("1 conexão FALHOU: " .. tostring(body)))
-        end
-        local n = #entriesOf(body)
-        self:say(log(string.format("1 conexão: HTTP %s em %.1f s, %d bytes, %d entradas no feed 'recentes'", code, took, #body, n)))
-    end)
-end
+-- ---------------------------------------------------------------- applying the configuration
 
-function Codice:testLiveConfig()
-    local server = findServer()
-    if not server then return self:say("Nenhum servidor do Códice em settings/opds.lua.") end
-    local report = {}
-    -- OPDS: the instance of the plugin keeps its servers in memory; the entry is added to that table and the file is written
+function Codice:applyConfig(cfg)
+    local c = self:connection()
+    if not c or type(cfg) ~= "table" then return false end
+    if not core.pluginMeets(cfg.minPlugin) then
+        self:say("Esta versão do Códice precisa de um plugin mais novo (" .. tostring(cfg.minPlugin) .. " ou mais). Atualize o plugin no repositório codice-ereader-plugin.")
+        return false
+    end
+    -- the catalog: through the plugin of OPDS when it is loaded (it keeps its list in memory), else in its file
     local opds = self.ui.opds
     if opds then
         opds:loadSettings()
-        local found
-        for _, s in ipairs(opds.servers) do
-            if s.title == PROTO_TITLE then found = s end
-        end
-        if not found then
-            table.insert(opds.servers, { title = PROTO_TITLE, url = server.url, username = server.username, password = server.password })
+        if core.upsertOpds(opds.servers, cfg, c.username, c.token) then
             opds.updated = true
             opds.settings:flush()
             opds.updated = nil
         end
-        report[#report + 1] = "OPDS: a entrada '" .. PROTO_TITLE .. "' " .. (found and "já existia" or "foi acrescentada") ..
-            ". Abra Catálogo OPDS SEM reiniciar o KOReader: ela deve estar na lista."
     else
-        report[#report + 1] = "OPDS: ui.opds não existe aqui."
+        local file = LuaSettings:open(DataStorage:getSettingsDir() .. "/opds.lua")
+        local servers = file:readSetting("servers", {})
+        if core.upsertOpds(servers, cfg, c.username, c.token) then file:flush() end
     end
-    -- KOSync: its settings table is read at every call (custom_server, username, userkey), so changing the table is live
+    -- the sync of progress: the plugin of KOSync lives only inside a book, and reads its table at every call
+    local key = md5(c.token)
     local kosync = self.ui.kosync
     if kosync and kosync.settings then
-        report[#report + 1] = "KOSync: servidor atual = " .. tostring(kosync.settings.custom_server) ..
-            " (lido a cada chamada; mudar kosync.settings vale na hora)"
+        core.applyKosync(kosync.settings, cfg, c.username, key)
+        kosync.updated = true
+        if kosync.settings_obj then kosync.settings_obj:flush() end
     else
-        report[#report + 1] = "KOSync: só existe dentro de um livro. Abra um livro e repita para ver o servidor atual."
+        local file = LuaSettings:open(DataStorage:getSettingsDir() .. "/kosync.lua")
+        core.applyKosync(file:readSetting("settings", {}), cfg, c.username, key)
+        file:flush()
     end
-    self:say(log("2 config ao vivo | " .. table.concat(report, " | ")):gsub(" | ", "\n"))
+    self:store():saveSetting("features", type(cfg.features) == "table" and cfg.features or {})
+    self:store():flush()
+    return true
 end
 
-function Codice:testCovers()
-    local server = findServer()
-    if not server then return self:say("Nenhum servidor do Códice em settings/opds.lua.") end
+--- Asks the instance for its configuration and applies what changed. `silent`: say nothing unless something changed or went wrong.
+function Codice:syncConfig(silent)
+    local c = self:connection()
+    if not c then
+        if not silent then self:say("Este leitor ainda não está conectado a um Códice. Use Códice → Conectar.") end
+        return
+    end
     NetworkMgr:runWhenOnline(function()
-        local started = socket.gettime()
-        local code, body = get(feedUrl(server, "recent"), server)
-        if not code or code ~= 200 then return self:say(log("3 capas: o feed falhou: " .. tostring(code or body))) end
-        os.execute("mkdir -p '" .. CACHE_DIR .. "'")
-        local origin = originOf(server.url)
-        local rows, fetched, failed = {}, 0, 0
-        for i, entry in ipairs(entriesOf(body)) do
-            if i > 6 then break end
-            local row = { title = entry.title }
-            if entry.thumb then
-                local href = entry.thumb
-                local url = href:find("^https?://") and href or (origin .. (href:sub(1, 1) == "/" and "" or "/") .. href)
-                local path = CACHE_DIR .. "/cover" .. i .. ".jpg"
-                local handle = io.open(path, "wb")
-                if handle then
-                    local c = get(url, server, ltn12.sink.file(handle))
-                    if c == 200 then
-                        row.file = path
-                        fetched = fetched + 1
-                    else
-                        failed = failed + 1
-                    end
-                end
-            end
-            rows[#rows + 1] = row
+        local headers = {}
+        if c.etag and c.etag ~= "" then headers["If-None-Match"] = c.etag end
+        local code, data, response_headers = api.request(c.url .. "/device/config", { user = c.username, password = c.token, headers = headers })
+        if not code then
+            if not silent then self:say("Não consegui falar com " .. c.url .. ".\n" .. tostring(data)) end
+            return
         end
-        log(string.format("3 capas: %d baixadas, %d falharam, em %.1f s; abrindo a lista", fetched, failed, socket.gettime() - started))
-        if #rows == 0 then return self:say("O feed não trouxe nenhuma entrada.") end
-        UIManager:show(CoverList:new{ rows = rows })
+        c.synced_at = os.time()
+        if code == 304 then
+            self:store():saveSetting("connection", c)
+            self:store():flush()
+            if not silent then self:say("A configuração do Códice já está em dia.", 5) end
+        elseif code == 200 and type(data) == "table" then
+            c.etag = response_headers and response_headers.etag or c.etag
+            self:store():saveSetting("connection", c)
+            if self:applyConfig(data) then
+                if silent then Notification:notify("Configuração do Códice atualizada.") else self:say("Configuração do Códice atualizada.", 5) end
+            end
+        elseif code == 401 then
+            self:say("O Códice não reconhece mais este acesso (ele pode ter sido removido em Aplicativos). Conecte de novo em Códice → Conectar.")
+        elseif not silent then
+            self:say("O servidor respondeu " .. tostring(code) .. " ao pedir a configuração.")
+        end
     end)
 end
 
-function Codice:testAnnotations()
-    self:say(log("4 anotações: o plugin está ouvindo. Abra um livro, destaque um trecho e depois veja o log (item 5). Eventos até agora: " ..
-        self.annotation_events))
-end
-
---- Fired by the reader when a highlight, note or bookmark is created, changed or removed.
-function Codice:onAnnotationsModified(items)
-    self.annotation_events = self.annotation_events + 1
-    local first = type(items) == "table" and items[1] or nil
-    local keys = {}
-    if type(first) == "table" then
-        for k in pairs(first) do keys[#keys + 1] = tostring(k) end
-        table.sort(keys)
+--- Called by the pairing when the person approved: keeps the access and applies the configuration that came with it.
+function Codice:onPaired(url, data)
+    self:store():saveSetting("connection", { url = url, username = data.username, token = data.token, token_id = data.tokenId, synced_at = os.time() })
+    self:store():flush()
+    if self:applyConfig(data.config) then
+        self:say("Conectado ao Códice como " .. tostring(data.username) .. ".\nO catálogo e a sincronização já estão configurados. Se você já abriu um livro nesta sessão, reinicie o KOReader uma vez.")
     end
-    log(string.format("4 anotações: evento %d, %d item(ns); campos do primeiro: %s", self.annotation_events,
-        type(items) == "table" and #items or 0, table.concat(keys, ",")))
 end
 
-function Codice:showLog()
-    local f = io.open(LOG_FILE, "r")
-    local text = f and f:read("*a") or "(vazio)"
-    if f then f:close() end
-    UIManager:show(TextViewer:new{ title = "codice_proto.log", text = text })
+function Codice:disconnect()
+    local c = self:connection()
+    if not c then return end
+    local function drop(servers)
+        for i = #servers, 1, -1 do
+            if servers[i].url and servers[i].url:find(c.url, 1, true) == 1 then table.remove(servers, i) end
+        end
+    end
+    if self.ui.opds then
+        self.ui.opds:loadSettings()
+        drop(self.ui.opds.servers)
+        self.ui.opds.updated = true
+        self.ui.opds.settings:flush()
+        self.ui.opds.updated = nil
+    else
+        local file = LuaSettings:open(DataStorage:getSettingsDir() .. "/opds.lua")
+        drop(file:readSetting("servers", {}))
+        file:flush()
+    end
+    local function clear(settings)
+        if settings.custom_server and settings.custom_server:find(c.url, 1, true) == 1 then
+            settings.custom_server, settings.username, settings.userkey = nil, nil, nil
+        end
+    end
+    if self.ui.kosync and self.ui.kosync.settings then
+        clear(self.ui.kosync.settings)
+        self.ui.kosync.updated = true
+        if self.ui.kosync.settings_obj then self.ui.kosync.settings_obj:flush() end
+    else
+        local file = LuaSettings:open(DataStorage:getSettingsDir() .. "/kosync.lua")
+        clear(file:readSetting("settings", {}))
+        file:flush()
+    end
+    self:store():delSetting("connection")
+    self:store():flush()
+    self:say("Este leitor foi desconectado do Códice.\nPara tirar o acesso também no servidor, remova-o em Minha conta → Aplicativos, no site.")
+end
+
+-- ---------------------------------------------------------------- the menu and the events
+
+function Codice:addToMainMenu(menu_items)
+    menu_items.codice = {
+        text = "Códice",
+        sorting_hint = "more_tools",
+        sub_item_table = {
+            {
+                text_func = function()
+                    local c = self:connection()
+                    return c and ("Conectado: " .. c.url) or "Não conectado"
+                end,
+                keep_menu_open = true,
+                callback = function()
+                    local c = self:connection()
+                    self:say(c and ("Conectado a " .. c.url .. "\ncomo " .. c.username) or "Este leitor não está conectado a um Códice.")
+                end,
+            },
+            {
+                text_func = function() return self:connection() and "Conectar a outra instância" or "Conectar" end,
+                callback = function() Pairing.start(self) end,
+            },
+            {
+                text = "Atualizar a configuração",
+                enabled_func = function() return self:connection() ~= nil end,
+                callback = function() self:syncConfig(false) end,
+            },
+            {
+                text = "Desconectar este leitor",
+                enabled_func = function() return self:connection() ~= nil end,
+                callback = function() self:disconnect() end,
+            },
+            { text = "Diagnóstico (protótipo)", sub_item_table = Diag.menu(self) },
+        },
+    }
+end
+
+--- The network came back: the configuration is asked again, quietly, if it has been a while.
+function Codice:onNetworkConnected()
+    local c = self:connection()
+    if not c or (c.synced_at and os.time() - c.synced_at < SYNC_EVERY) then return end
+    UIManager:scheduleIn(3, function()
+        local ok, err = pcall(self.syncConfig, self, true)
+        if not ok then logger.warn("codice: syncing the configuration failed:", err) end
+    end)
+end
+
+function Codice:onAnnotationsModified(items)
+    Diag.onAnnotationsModified(self, items)
 end
 
 return Codice

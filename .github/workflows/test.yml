@@ -1,0 +1,15 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: syntax of every file
+        run: for f in plugins/codice.koplugin/*.lua tests/*.lua; do luajit -bl "$f" > /dev/null; done
+      - name: logic that does not need KOReader
+        run: luajit tests/run.lua
