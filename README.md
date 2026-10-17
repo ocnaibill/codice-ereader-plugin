@@ -2,7 +2,7 @@
 
 Plugin do [Códice](https://github.com/ocnaibill/codice) para o KOReader (Kindle com jailbreak, no começo). Conecta o leitor à sua instância por um **código aprovado no site** (sem digitar senha na tela e-ink) e mantém no aparelho a configuração do catálogo (OPDS) e da sincronização de progresso (KOSync). Plano e decisões: issue [ocnaibill/codice#327](https://github.com/ocnaibill/codice/issues/327) e a proposta `docs/Codice_Proposta_Pareamento_Leitor_2026-10-17.md` do Códice. Licença AGPLv3, como o KOReader e o Códice.
 
-**Estado:** o pareamento funciona num Kindle 10ª geração. A tela inicial e a atualização do plugin (versão 0.2.0) **ainda não foram testadas num aparelho**; a lógica (`codice_core.lua`) tem testes. Testado antes, num Kindle 10ª geração com KOReader v2026.07.2: HTTPS com a instância, configuração do OPDS ao vivo, capas numa lista e eventos de anotação (o protótipo, hoje em *Diagnóstico*).
+**Estado:** o pareamento e a tela inicial funcionam num Kindle 10ª geração (testados pelo mantenedor). Na versão 0.3.0: a home rola, abre sozinha ao iniciar e ao fechar um livro, pergunta qual arquivo abrir e avisa quando um livro novo no aparelho começaria do início; **isso ainda não foi testado num aparelho**. A lógica (`codice_core.lua`) tem testes. Testado antes, num Kindle 10ª geração com KOReader v2026.07.2: HTTPS com a instância, configuração do OPDS ao vivo, capas numa lista e eventos de anotação (o protótipo, hoje em *Diagnóstico*).
 
 ## Instalar
 
@@ -20,7 +20,13 @@ Depois disso, quando o Wi-Fi volta (no máximo a cada 6 horas), o plugin pergunt
 
 ## Tela inicial
 
-**Códice → Abrir o Códice** mostra a home no desenho da home da web, em páginas (deslize ou toque em `<` `>`): saudação e números, **Continuar lendo**, **Favoritos**, algumas anotações e as **prateleiras** por categoria. Toque numa capa para **Ler** ou **Continuar**: o livro é baixado para a pasta `Códice` dentro da pasta de leitura do KOReader (se ainda não estiver no aparelho) e abre. O **Menu** do canto tem o catálogo completo (OPDS), a configuração e a atualização. Isso exige um Códice que tenha `GET /device/home` (DEC-195).
+O Códice é a primeira tela: ao iniciar o KOReader, e toda vez que você fecha um livro, a home abre sozinha (mostra a última que o servidor mandou e atualiza se o Wi-Fi já estiver ligado, sem pedir). **Códice → Abrir o Códice ao iniciar** liga e desliga isso; o **Menu** da home tem **Arquivos do KOReader** para ir aos arquivos.
+
+A home segue a da web, numa coluna que rola (deslize para cima e para baixo; ela para no começo de uma linha): saudação e números, **Continuar lendo**, **Favoritos**, algumas anotações e as **prateleiras** por categoria. As capas chegam depois da tela, algumas por vez.
+
+Tocar numa capa abre o livro: **Ler**/**Continuar**. Se a obra tem mais de um arquivo, o plugin pergunta qual (`Português - EPUB (principal)`, `Inglês - PDF (último acessado, 20%)`...). O arquivo é baixado para a pasta `Códice` dentro da pasta de leitura (se ainda não estiver no aparelho). Isso exige um Códice com `GET /device/home` e `GET /device/works/{id}/files` (DEC-195).
+
+**Livro novo no aparelho:** se você abre um livro que o servidor já tem lido por este mesmo Kindle e a cópia do aparelho está no começo (um download novo), o plugin pergunta "Continuar de onde parou?". Sem isso, o KOReader não pergunta e a próxima virada de página mandaria "o começo" por cima do seu progresso.
 
 ## Atualizar o plugin
 
@@ -47,7 +53,7 @@ luajit tests/run.lua      # a lógica que não precisa do KOReader
 | `codice_core.lua` | endereço, versões, o que cada resposta do servidor significa, o que se escreve no OPDS e no KOSync (puro, testado) |
 | `codice_http.lua` | pedidos JSON com os tempos do KOReader |
 | `codice_pairing.lua` | o fluxo na tela: endereço, código, QR, espera da aprovação |
-| `codice_home.lua` | a tela inicial: seções em páginas, capas, toque numa obra |
+| `codice_home.lua` | a tela inicial: coluna que rola, capas que chegam depois, toque numa obra |
 | `codice_update.lua` | a atualização do plugin (download, hash, sintaxe, troca, volta atrás) |
 | `main.lua` | o plugin: menu, guardar o acesso, aplicar a configuração, abrir livros, atualizar quando a rede volta |
 | `codice_diag.lua` | os testes do protótipo |

@@ -3,6 +3,8 @@ Plugin do Códice para o KOReader: conecta o leitor a uma instância do Códice 
 configuração do catálogo (OPDS) e da sincronização de progresso (KOSync). Issue ocnaibill/codice#327, DEC-194.
 ]]--
 
+local ButtonDialog = require("ui/widget/buttondialog")
+local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
 local InfoMessage = require("ui/widget/infomessage")
 local LuaSettings = require("luasettings")
@@ -34,6 +36,24 @@ local Codice = WidgetContainer:extend{
 function Codice:init()
     self.settings_file = DataStorage:getSettingsDir() .. "/codice.lua"
     self.ui.menu:registerToMainMenu(self)
+    -- The Códice is the first screen: when KOReader starts and every time a book is closed (the file manager is made again then), the home
+    -- opens over it. From the home, "Arquivos do KOReader" goes to the files.
+    if self.ui.name ~= "ReaderUI" and not self.ui.document and self:connection() and self:autostart() then
+        UIManager:nextTick(function()
+            local ok, err = pcall(self.showHome, self, nil, true)
+            if not ok then logger.warn("codice: opening the home failed:", err) end
+        end)
+    end
+end
+
+--- Whether the home opens by itself (on unless the person turned it off).
+function Codice:autostart()
+    return self:store():readSetting("autostart") ~= false
+end
+
+function Codice:setAutostart(on)
+    self:store():saveSetting("autostart", on and true or false)
+    self:store():flush()
 end
 
 -- ---------------------------------------------------------------- what is kept
@@ -192,12 +212,64 @@ function Codice:fetchHome(done)
     end)
 end
 
---- Shows the home (or draws it again, when `home` is the one already open).
-function Codice:showHome(home)
+local function homeCacheFile()
+    return DataStorage:getDataDir() .. "/cache/codice/home.json"
+end
+
+--- The last home the server sent, kept to show at once when the reader starts (the network may be off or slow).
+function Codice:loadHomeCache()
+    local f = io.open(homeCacheFile(), "rb")
+    if not f then return nil end
+    local text = f:read("*a")
+    f:close()
+    return api.decode(text)
+end
+
+function Codice:saveHomeCache(data)
+    lfs.mkdir(DataStorage:getDataDir() .. "/cache")
+    lfs.mkdir(DataStorage:getDataDir() .. "/cache/codice")
+    local f = io.open(homeCacheFile(), "wb")
+    if f then
+        f:write(api.encode(data))
+        f:close()
+    end
+end
+
+--- Asks again, quietly, and redraws the open home when something changed.
+function Codice:refreshHome()
+    local c = self:connection()
+    if not c or not self.home_open or not NetworkMgr:isOnline() then return end
+    local code, data = api.request(c.url .. "/device/home", { user = c.username, password = c.token })
+    if code ~= 200 or type(data) ~= "table" or not self.home_open then return end
+    if api.encode(data) ~= api.encode(self.home_open.data) then
+        self:saveHomeCache(data)
+        self.home_open:setData(data)
+    end
+end
+
+--- Shows the home (or draws it again, when `home` is the one already open). `quiet`: the reader just started or a book was closed; show
+--- the last one at once and refresh it only if the network is already on, never ask for Wi-Fi.
+function Codice:showHome(home, quiet)
+    if quiet then
+        if self.home_open then return end
+        local cached = self:loadHomeCache()
+        if cached then
+            UIManager:show(Home:new{ plugin = self, data = cached })
+            UIManager:scheduleIn(2, function()
+                local ok, err = pcall(self.refreshHome, self)
+                if not ok then logger.warn("codice: refreshing the home failed:", err) end
+            end)
+            return
+        end
+        if not NetworkMgr:isOnline() then return end
+    elseif self.home_open and not home then
+        return
+    end
     UIManager:show(InfoMessage:new{ text = "Carregando o Códice…", timeout = 1 })
     UIManager:nextTick(function()
         self:fetchHome(function(data, problem)
             if not data then return self:say(problem) end
+            self:saveHomeCache(data)
             if home and home.setData then
                 home:setData(data)
             else
@@ -246,6 +318,69 @@ function Codice:openBook(card, before)
     end)
 end
 
+--- Opens a work: straight away when it has one file, else the person chooses which (the main one, the others, the last read marked).
+function Codice:chooseAndOpen(card, before)
+    if (card.fileCount or 1) <= 1 then return self:openBook(card, before) end
+    local c = self:connection()
+    if not c then return end
+    NetworkMgr:runWhenOnline(function()
+        local code, data = api.request(c.url .. "/device/works/" .. card.id .. "/files", { user = c.username, password = c.token })
+        if code ~= 200 or type(data) ~= "table" or type(data.files) ~= "table" or #data.files == 0 then
+            return self:openBook(card, before) -- the choice cannot be had: the one the home pointed to
+        end
+        local choices = core.fileChoices(data.files)
+        if #choices == 1 then
+            return self:openBook({ id = card.id, title = card.title, fileId = choices[1].id, format = choices[1].format }, before)
+        end
+        local dialog
+        local buttons = {}
+        for _, choice in ipairs(choices) do
+            buttons[#buttons + 1] = {{
+                text = choice.label,
+                callback = function()
+                    UIManager:close(dialog)
+                    self:openBook({ id = card.id, title = card.title, fileId = choice.id, format = choice.format }, before)
+                end,
+            }}
+        end
+        buttons[#buttons + 1] = {{ text = "Cancelar", callback = function() UIManager:close(dialog) end }}
+        dialog = ButtonDialog:new{ title = (card.title or "?") .. "\n\nQual arquivo abrir?", title_align = "center", buttons = buttons }
+        UIManager:show(dialog)
+    end)
+end
+
+--- A book opened on this reader for the first time starts at the first page, and KOSync says nothing when the place the server has was
+--- written by this very reader (it takes the new copy for the one it already knows): the next page turn would then send "the start" over
+--- the real place. So, when the copy is at the start and the server has this reader far on, the person is asked.
+function Codice:checkFreshCopy()
+    local ui = self.ui
+    local kosync = ui.kosync
+    if not (ui.document and kosync and kosync.settings) then return end
+    local s = kosync.settings
+    if not (s.custom_server and s.username and s.userkey) or not NetworkMgr:isOnline() then return end
+    local here = kosync:getLastPercent() or 0
+    if here > 0.01 then return end
+    local code, body = api.request(s.custom_server .. "/syncs/progress/" .. kosync:getDocumentDigest(), {
+        headers = { ["x-auth-user"] = s.username, ["x-auth-key"] = s.userkey, ["Accept"] = "application/vnd.koreader.v1+json" } })
+    if code ~= 200 or type(body) ~= "table" or not body.percentage or not body.progress then return end
+    -- a place written by another device is KOSync's to ask about; this is the case it lets pass
+    if body.device_id ~= kosync.device_id or body.percentage < 0.02 then return end
+    UIManager:show(ConfirmBox:new{
+        text = string.format("Você parou em %d%% neste livro.\n\nContinuar de onde parou?", math.floor(body.percentage * 100 + 0.5)),
+        ok_text = "Continuar",
+        cancel_text = "Do começo",
+        ok_callback = function() kosync:syncToProgress(body.progress) end,
+    })
+end
+
+function Codice:onReaderReady()
+    if not (self.ui.kosync and self.ui.kosync.settings and self.ui.kosync.settings.auto_sync) then return end
+    UIManager:scheduleIn(4, function()
+        local ok, err = pcall(self.checkFreshCopy, self)
+        if not ok then logger.warn("codice: checking a fresh copy failed:", err) end
+    end)
+end
+
 function Codice:checkUpdate(silent)
     Update.check(self, silent)
 end
@@ -276,6 +411,15 @@ function Codice:addToMainMenu(menu_items)
                 text = "Abrir o Códice",
                 enabled_func = function() return self:connection() ~= nil end,
                 callback = function() self:showHome() end,
+            },
+            {
+                text_func = function() return self:autostart() and "Abrir o Códice ao iniciar: sim" or "Abrir o Códice ao iniciar: não" end,
+                keep_menu_open = true,
+                enabled_func = function() return self:connection() ~= nil end,
+                callback = function(touchmenu_instance)
+                    self:setAutostart(not self:autostart())
+                    if touchmenu_instance then touchmenu_instance:updateItems() end
+                end,
             },
             {
                 text = "Atualizar a configuração",
