@@ -13,11 +13,19 @@ if not ok_json then json = require("json") end
 
 local M = {}
 
+
 local function decode(text)
     if not text or text == "" then return nil end
     local ok, value = pcall(json.decode, text)
     if ok and type(value) == "table" then return value end
     return nil
+end
+
+M.decode = decode
+
+--- A table as JSON text.
+function M.encode(value)
+    return json.encode(value)
 end
 
 --- `opts`: method, body (a table, sent as JSON), user and password (Basic), headers, sink (to save a file instead of reading the answer, with the

@@ -119,6 +119,7 @@ eq(core.safeName("  "), "livro", "vazio")
 eq(core.safeName("Ação e coração", 4), "Aç", "corta em caractere inteiro, não no meio do UTF-8")
 eq(core.bookFileName({ id = 7, title = "Duna", format = "EPUB" }), "7 - Duna.epub", "id, título, formato")
 eq(core.bookFileName({ id = 8, title = "X", format = "" }), "8 - X.epub", "sem formato, epub")
+eq(core.bookFileName({ id = 8, fileId = 80, title = "X", format = "pdf" }), "80 - X.pdf", "o id do arquivo separa dois arquivos da mesma obra")
 eq(core.coverCacheName("/covers/abc-1.jpg"), "covers_abc_1_jpg.jpg", "o nome da capa guardada")
 
 -- atualização
@@ -132,9 +133,26 @@ eq(core.pickRelease({ tag_name = "nightly", assets = release.assets }), nil, "ta
 eq(core.pickRelease(nil), nil, "sem release")
 eq(core.parseSha256("ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789  codice-plugin.zip\n"), "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "hash em minúsculas")
 eq(core.parseSha256("não é um hash"), nil, "texto sem hash")
-eq(core.isNewer("0.3.0"), true, "mais nova")
+eq(core.isNewer("0.4.0"), true, "mais nova")
 eq(core.isNewer(core.PLUGIN_VERSION), false, "a mesma")
 eq(core.isNewer("0.1.0"), false, "mais velha")
+
+-- escolher o arquivo
+eq(core.languageName("pt-BR"), "Português", "pt-BR é português")
+eq(core.languageName("xx"), "XX", "idioma que não conhecemos")
+eq(core.languageName(nil), "Idioma não informado", "sem idioma")
+local choices = core.fileChoices({
+    { id = 30, format = "pdf", language = "en", last = true, percent = 20 },
+    { id = 10, format = "epub", language = "pt", primary = true },
+    { id = 20, format = "epub", language = "en", completed = true },
+})
+eq(#choices, 3, "três opções")
+eq(choices[1].id, 10, "o principal primeiro")
+eq(choices[1].label, "Português - EPUB  (principal)", "principal")
+eq(choices[2].id, 20, "depois os outros, pelo id")
+eq(choices[2].label, "Inglês - EPUB  (lido)", "lido")
+eq(choices[3].label, "Inglês - PDF  (último acessado, 20%)", "último acessado, com quanto foi lido")
+eq(#core.fileChoices(nil), 0, "sem arquivos")
 
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

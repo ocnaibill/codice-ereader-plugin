@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.2.0"
+M.PLUGIN_VERSION = "0.3.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
@@ -191,11 +191,45 @@ function M.safeName(s, limit)
     return s
 end
 
---- Where a downloaded book goes inside the folder of the plugin: the id keeps two works with the same title apart.
+--- Where a downloaded book goes inside the folder of the plugin: the id of the file keeps two files with the same title apart (the
+--- EPUBs of two editions, or of two languages, are two files of one work).
 function M.bookFileName(card)
     local ext = tostring(card.format or "epub"):lower():gsub("[^%w]", "")
     if ext == "" then ext = "epub" end
-    return string.format("%d - %s.%s", card.id or 0, M.safeName(card.title, 70), ext)
+    return string.format("%d - %s.%s", card.fileId or card.id or 0, M.safeName(card.title, 70), ext)
+end
+
+local LANGUAGES = { pt = "Português", en = "Inglês", es = "Espanhol", fr = "Francês", it = "Italiano", de = "Alemão", ja = "Japonês", zh = "Chinês", la = "Latim", ru = "Russo" }
+
+--- The name of a language from its code ("pt-BR" is Português).
+function M.languageName(code)
+    code = tostring(code or ""):lower():match("^(%a+)") or ""
+    if code == "" then return "Idioma não informado" end
+    return LANGUAGES[code] or code:upper()
+end
+
+--- The choices when a work has more than one file to open, from the answer of GET /device/works/{id}/files: the main file first and then the
+--- others, each as "Português - EPUB", with "principal" and "último acessado" on the ones that are, and how far the person is.
+function M.fileChoices(files)
+    local out = {}
+    for _, f in ipairs(files or {}) do
+        local label = M.languageName(f.language) .. " - " .. tostring(f.format or "?"):upper()
+        local marks = {}
+        if f.primary then marks[#marks + 1] = "principal" end
+        if f.last then marks[#marks + 1] = "último acessado" end
+        if f.completed then
+            marks[#marks + 1] = "lido"
+        elseif (f.percent or 0) > 0 then
+            marks[#marks + 1] = string.format("%d%%", math.floor(f.percent + 0.5))
+        end
+        if #marks > 0 then label = label .. "  (" .. table.concat(marks, ", ") .. ")" end
+        out[#out + 1] = { id = f.id, format = f.format, label = label, primary = f.primary and true or false }
+    end
+    table.sort(out, function(a, b)
+        if a.primary ~= b.primary then return a.primary end
+        return a.id < b.id
+    end)
+    return out
 end
 
 --- The name a cover is kept under: its path, as letters and digits.
