@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.1.0"
+M.PLUGIN_VERSION = "0.2.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
@@ -116,6 +116,123 @@ end
 --- Whether a stored configuration is already what the server has: the same ETag.
 function M.sameConfig(stored, etag)
     return etag ~= nil and etag ~= "" and stored == etag
+end
+
+-- ---------------------------------------------------------------- the home
+
+--- The sections of the home, in the order of the home of the web: greeting and numbers, what to continue, favorites, a few marked
+--- passages, and the library as shelves. A section with nothing in it is left out. `home` is the answer of GET /device/home.
+function M.homeSections(home)
+    local out = {}
+    if type(home) ~= "table" then return out end
+    local user, stats = home.user, home.stats
+    out[#out + 1] = { kind = "greeting", name = user and user.name or nil, stats = stats }
+    local function row(title, cards, extra)
+        if type(cards) == "table" and #cards > 0 then
+            out[#out + 1] = { kind = "row", title = title, cards = cards, total = extra }
+        end
+    end
+    row("Continuar lendo", home.continue)
+    row("Favoritos", home.favorites)
+    if type(home.notes) == "table" and #home.notes > 0 then out[#out + 1] = { kind = "quotes", title = "Das suas anotações", notes = home.notes } end
+    for _, shelf in ipairs(home.shelves or {}) do
+        local title = shelf.title or "Acervo"
+        if shelf.total and shelf.total > #(shelf.works or {}) then title = title .. " (" .. shelf.total .. ")" end
+        row(title, shelf.works)
+    end
+    return out
+end
+
+--- Puts blocks (each `{h = height}`) into pages of `limit` height, in order, never splitting a block; a block taller than a page has a page
+--- of its own. Returns a list of pages, each a list of blocks.
+function M.paginate(blocks, limit)
+    local pages, page, used = {}, {}, 0
+    for _, block in ipairs(blocks) do
+        if #page > 0 and used + block.h > limit then
+            pages[#pages + 1] = page
+            page, used = {}, 0
+        end
+        page[#page + 1] = block
+        used = used + block.h
+    end
+    if #page > 0 then pages[#pages + 1] = page end
+    return pages
+end
+
+--- Cards of a row, in lines of `per_line`.
+function M.lines(cards, per_line, limit)
+    local out, line = {}, {}
+    for i, card in ipairs(cards) do
+        if limit and i > limit then break end
+        line[#line + 1] = card
+        if #line == per_line then out[#out + 1], line = line, {} end
+    end
+    if #line > 0 then out[#out + 1] = line end
+    return out
+end
+
+-- ---------------------------------------------------------------- files
+
+--- A name that is safe in a file system: no separators or characters a FAT card refuses, no control characters, and short, cut on a whole
+--- character (never in the middle of a UTF-8 one).
+function M.safeName(s, limit)
+    limit = limit or 80
+    s = tostring(s or ""):gsub("[%c/\\:*?\"<>|]", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    if #s > limit then
+        local cut = limit
+        while cut > 0 do
+            local b = s:byte(cut + 1)
+            if not b or b < 128 or b >= 192 then break end -- the next byte starts a character
+            cut = cut - 1
+        end
+        s = s:sub(1, cut):gsub("%s+$", "")
+    end
+    if s == "" then s = "livro" end
+    return s
+end
+
+--- Where a downloaded book goes inside the folder of the plugin: the id keeps two works with the same title apart.
+function M.bookFileName(card)
+    local ext = tostring(card.format or "epub"):lower():gsub("[^%w]", "")
+    if ext == "" then ext = "epub" end
+    return string.format("%d - %s.%s", card.id or 0, M.safeName(card.title, 70), ext)
+end
+
+--- The name a cover is kept under: its path, as letters and digits.
+function M.coverCacheName(path)
+    return (tostring(path or ""):gsub("^/", ""):gsub("[^%w]+", "_")) .. ".jpg"
+end
+
+-- ---------------------------------------------------------------- updates (OTA)
+
+M.RELEASES_URL = "https://api.github.com/repos/ocnaibill/codice-ereader-plugin/releases/latest"
+M.ZIP_ASSET = "codice-plugin.zip"
+M.SHA_ASSET = "codice-plugin.zip.sha256"
+
+--- What to download from the answer of the releases of GitHub: the version, the address of the zip and of its hash. Nil and a reason when
+--- the release does not have what an update needs.
+function M.pickRelease(release)
+    if type(release) ~= "table" or type(release.tag_name) ~= "string" then return nil, "no release" end
+    local version = release.tag_name:gsub("^v", "")
+    if #parts(version) == 0 then return nil, "no version" end
+    local zip, sha
+    for _, asset in ipairs(release.assets or {}) do
+        if asset.name == M.ZIP_ASSET then zip = asset.browser_download_url end
+        if asset.name == M.SHA_ASSET then sha = asset.browser_download_url end
+    end
+    if not zip or not sha then return nil, "assets" end
+    return { version = version, zip = zip, sha = sha }
+end
+
+--- The hash in a file of hashes ("<64 hex>  name"), in lower case; nil when there is none.
+function M.parseSha256(text)
+    local hex = tostring(text or ""):match("(%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x)")
+    return hex and hex:lower() or nil
+end
+
+--- Whether a release is newer than this plugin.
+function M.isNewer(version)
+    return M.versionLess(M.PLUGIN_VERSION, version)
 end
 
 return M

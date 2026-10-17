@@ -17,8 +17,14 @@ local core = require("codice_core")
 local api = require("codice_http")
 local Diag = require("codice_diag")
 local Pairing = require("codice_pairing")
+local Home = require("codice_home")
+local Update = require("codice_update")
+local lfs = require("libs/libkoreader-lfs")
+local ltn12 = require("ltn12")
+local util = require("util")
 
 local SYNC_EVERY = 6 * 3600 -- the configuration is asked again at most this often, when the network comes back
+local UPDATE_EVERY = 7 * 24 * 3600 -- and a newer plugin is looked for at most this often
 
 local Codice = WidgetContainer:extend{
     name = "codice",
@@ -169,6 +175,81 @@ function Codice:disconnect()
     self:say("Este leitor foi desconectado do Códice.\nPara tirar o acesso também no servidor, remova-o em Minha conta → Aplicativos, no site.")
 end
 
+
+-- ---------------------------------------------------------------- the home, the books and the updates
+
+--- Asks the server for the home. `done(data)` gets the answer, or nil and a sentence for the person.
+function Codice:fetchHome(done)
+    local c = self:connection()
+    if not c then return done(nil, "Este leitor ainda não está conectado a um Códice. Use Códice → Conectar.") end
+    NetworkMgr:runWhenOnline(function()
+        local code, data = api.request(c.url .. "/device/home", { user = c.username, password = c.token })
+        if not code then return done(nil, "Não consegui falar com " .. c.url .. ".\n" .. tostring(data)) end
+        if code == 401 then return done(nil, "O Códice não reconhece mais este acesso (ele pode ter sido removido em Aplicativos). Conecte de novo.") end
+        if code == 404 then return done(nil, "Este Códice ainda não tem a tela inicial para leitores. Peça a quem cuida dele para atualizar.") end
+        if code ~= 200 or type(data) ~= "table" then return done(nil, "O servidor respondeu " .. tostring(code) .. " ao pedir a tela inicial.") end
+        done(data)
+    end)
+end
+
+--- Shows the home (or draws it again, when `home` is the one already open).
+function Codice:showHome(home)
+    UIManager:show(InfoMessage:new{ text = "Carregando o Códice…", timeout = 1 })
+    UIManager:nextTick(function()
+        self:fetchHome(function(data, problem)
+            if not data then return self:say(problem) end
+            if home and home.setData then
+                home:setData(data)
+            else
+                UIManager:show(Home:new{ plugin = self, data = data })
+            end
+        end)
+    end)
+end
+
+--- Where the books fetched by the home are kept: a folder of their own inside the one the person reads from.
+function Codice:booksDir()
+    local base = G_reader_settings:readSetting("home_dir") or G_reader_settings:readSetting("download_dir") or "/mnt/us/documents"
+    local dir = base:gsub("/+$", "") .. "/Códice"
+    util.makePath(dir)
+    return dir
+end
+
+--- Opens a book of the home: the file is fetched if it is not on the reader yet. `before` runs just before the reader opens.
+function Codice:openBook(card, before)
+    local c = self:connection()
+    if not c then return end
+    if not card.fileId or card.fileId == 0 then return self:say("Esta obra não tem um arquivo para abrir.") end
+    local path = self:booksDir() .. "/" .. core.bookFileName(card)
+    local function open()
+        if before then before() end
+        require("apps/reader/readerui"):showReader(path)
+    end
+    if lfs.attributes(path, "mode") == "file" and lfs.attributes(path, "size") > 0 then return open() end
+    NetworkMgr:runWhenOnline(function()
+        UIManager:show(InfoMessage:new{ text = "Baixando “" .. tostring(card.title) .. "”…", timeout = 1 })
+        UIManager:nextTick(function()
+            local part = path .. ".part"
+            local handle = io.open(part, "wb")
+            if not handle then return self:say("Não consegui gravar o livro em " .. self:booksDir()) end
+            local code, err = api.request(c.url .. "/file/" .. card.fileId, { user = c.username, password = c.token, sink = ltn12.sink.file(handle) })
+            if code ~= 200 then
+                os.remove(part)
+                return self:say("Não consegui baixar o livro (" .. tostring(code or err) .. ").")
+            end
+            if not os.rename(part, path) then
+                os.remove(part)
+                return self:say("Não consegui guardar o livro baixado.")
+            end
+            open()
+        end)
+    end)
+end
+
+function Codice:checkUpdate(silent)
+    Update.check(self, silent)
+end
+
 -- ---------------------------------------------------------------- the menu and the events
 
 function Codice:addToMainMenu(menu_items)
@@ -192,6 +273,11 @@ function Codice:addToMainMenu(menu_items)
                 callback = function() Pairing.start(self) end,
             },
             {
+                text = "Abrir o Códice",
+                enabled_func = function() return self:connection() ~= nil end,
+                callback = function() self:showHome() end,
+            },
+            {
                 text = "Atualizar a configuração",
                 enabled_func = function() return self:connection() ~= nil end,
                 callback = function() self:syncConfig(false) end,
@@ -201,6 +287,12 @@ function Codice:addToMainMenu(menu_items)
                 enabled_func = function() return self:connection() ~= nil end,
                 callback = function() self:disconnect() end,
             },
+            { text = "Procurar atualização do plugin", callback = function() self:checkUpdate(false) end },
+            {
+                text = "Voltar à versão anterior do plugin",
+                enabled_func = function() return Update.hasPrevious(self) end,
+                callback = function() Update.rollback(self) end,
+            },
             { text = "Diagnóstico (protótipo)", sub_item_table = Diag.menu(self) },
         },
     }
@@ -209,11 +301,20 @@ end
 --- The network came back: the configuration is asked again, quietly, if it has been a while.
 function Codice:onNetworkConnected()
     local c = self:connection()
-    if not c or (c.synced_at and os.time() - c.synced_at < SYNC_EVERY) then return end
-    UIManager:scheduleIn(3, function()
-        local ok, err = pcall(self.syncConfig, self, true)
-        if not ok then logger.warn("codice: syncing the configuration failed:", err) end
-    end)
+    if not c then return end
+    if not (c.synced_at and os.time() - c.synced_at < SYNC_EVERY) then
+        UIManager:scheduleIn(3, function()
+            local ok, err = pcall(self.syncConfig, self, true)
+            if not ok then logger.warn("codice: syncing the configuration failed:", err) end
+        end)
+    end
+    local checked = self:store():readSetting("update_checked_at")
+    if not (checked and os.time() - checked < UPDATE_EVERY) then
+        UIManager:scheduleIn(8, function()
+            local ok, err = pcall(self.checkUpdate, self, true)
+            if not ok then logger.warn("codice: looking for an update failed:", err) end
+        end)
+    end
 end
 
 function Codice:onAnnotationsModified(items)
