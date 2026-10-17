@@ -1,0 +1,26 @@
+name: release
+# A tag vX.Y.Z makes a release with the zip of the plugin and its SHA-256, which is what the plugin looks for when it updates itself.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: the tag is the version of the plugin
+        run: |
+          version=$(sed -n 's/^M.PLUGIN_VERSION = "\(.*\)"/\1/p' plugins/codice.koplugin/codice_core.lua)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then echo "tag $GITHUB_REF_NAME but the plugin says $version"; exit 1; fi
+      - run: luajit tests/run.lua
+      - name: package
+        run: |
+          zip -r codice-plugin.zip plugins
+          sha256sum codice-plugin.zip > codice-plugin.zip.sha256
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" codice-plugin.zip codice-plugin.zip.sha256 --title "$GITHUB_REF_NAME" --generate-notes

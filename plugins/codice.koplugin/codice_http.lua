@@ -20,7 +20,8 @@ local function decode(text)
     return nil
 end
 
---- `opts`: method, body (a table, sent as JSON), user and password (Basic), headers, sink (to save a file instead of reading the answer).
+--- `opts`: method, body (a table, sent as JSON), user and password (Basic), headers, sink (to save a file instead of reading the answer, with the
+--- longer timeouts of a download), raw (the answer is returned as the text it is, not decoded).
 function M.request(url, opts)
     opts = opts or {}
     local chunks = {}
@@ -33,7 +34,11 @@ function M.request(url, opts)
         source = ltn12.source.string(payload)
     end
     for k, v in pairs(opts.headers or {}) do headers[k] = v end
-    socketutil:set_timeout(15, 45)
+    if opts.sink then
+        socketutil:set_timeout(socketutil.FILE_BLOCK_TIMEOUT, socketutil.FILE_TOTAL_TIMEOUT)
+    else
+        socketutil:set_timeout(15, 45)
+    end
     local code, response_headers, status = socket.skip(1, http.request{
         url = url,
         method = opts.method or (opts.body and "POST" or "GET"),
@@ -45,6 +50,7 @@ function M.request(url, opts)
     })
     socketutil:reset_timeout()
     if type(code) ~= "number" then return nil, tostring(code or status) end
+    if opts.raw then return code, table.concat(chunks), response_headers end
     return code, decode(table.concat(chunks)), response_headers
 end
 

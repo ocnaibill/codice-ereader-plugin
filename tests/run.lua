@@ -84,5 +84,57 @@ eq(core.sameConfig('"abc"', '"def"'), false, "ETag diferente")
 eq(core.sameConfig(nil, '"def"'), false, "nada guardado")
 eq(core.sameConfig('"abc"', nil), false, "sem ETag")
 
+-- as seções da home, na ordem da home da web
+local home = {
+    user = { name = "Ana" }, stats = { worksTotal = 12 },
+    continue = { { id = 1, title = "Duna" } },
+    favorites = {},
+    notes = { { text = "uma frase", title = "Duna" } },
+    shelves = { { id = 3, title = "Ficção", total = 40, works = { { id = 2, title = "A" }, { id = 3, title = "B" } } }, { id = 4, title = "Vazia", works = {} } },
+}
+local sections = core.homeSections(home)
+local kinds = {}
+for _, sec in ipairs(sections) do kinds[#kinds + 1] = sec.kind .. ":" .. (sec.title or "") end
+eq(table.concat(kinds, "|"), "greeting:|row:Continuar lendo|quotes:Das suas anotações|row:Ficção (40)", "greeting, continuar, anotações, prateleiras (sem favoritos vazios nem prateleira vazia)")
+eq(sections[1].name, "Ana", "o nome")
+eq(#core.homeSections(nil), 0, "sem home, sem seções")
+eq(core.homeSections({})[1].kind, "greeting", "uma home vazia ainda cumprimenta")
+
+-- as páginas
+local blocks = { { h = 100 }, { h = 300 }, { h = 300 }, { h = 50 }, { h = 900 }, { h = 10 } }
+local pages = core.paginate(blocks, 650)
+eq(#pages, 4, "quatro páginas")
+eq(#pages[1], 2, "100+300 cabem; +300 passa de 650")
+eq(#pages[2], 2, "300+50")
+eq(#pages[3], 1, "um bloco mais alto que a página fica sozinho")
+eq(#pages[4], 1, "o resto")
+eq(#core.paginate({}, 700), 0, "sem blocos, sem páginas")
+local lines = core.lines({ 1, 2, 3, 4, 5, 6, 7 }, 3, 6)
+eq(#lines, 2, "seis cartões em duas linhas de três")
+eq(#core.lines({ 1, 2, 3, 4 }, 3), 2, "quatro: três e um")
+
+-- arquivos
+eq(core.safeName('Duna: o "livro" / 1'), "Duna o livro 1", "tira o que um sistema de arquivos recusa")
+eq(core.safeName("  "), "livro", "vazio")
+eq(core.safeName("Ação e coração", 4), "Aç", "corta em caractere inteiro, não no meio do UTF-8")
+eq(core.bookFileName({ id = 7, title = "Duna", format = "EPUB" }), "7 - Duna.epub", "id, título, formato")
+eq(core.bookFileName({ id = 8, title = "X", format = "" }), "8 - X.epub", "sem formato, epub")
+eq(core.coverCacheName("/covers/abc-1.jpg"), "covers_abc_1_jpg.jpg", "o nome da capa guardada")
+
+-- atualização
+local release = { tag_name = "v0.2.0", assets = { { name = "codice-plugin.zip", browser_download_url = "https://x/z.zip" }, { name = "codice-plugin.zip.sha256", browser_download_url = "https://x/z.sha" } } }
+local pick = core.pickRelease(release)
+eq(pick.version, "0.2.0", "versão sem o v")
+eq(pick.zip, "https://x/z.zip", "zip")
+eq(pick.sha, "https://x/z.sha", "hash")
+eq(core.pickRelease({ tag_name = "v0.2.0", assets = {} }), nil, "sem os arquivos, não atualiza")
+eq(core.pickRelease({ tag_name = "nightly", assets = release.assets }), nil, "tag sem versão")
+eq(core.pickRelease(nil), nil, "sem release")
+eq(core.parseSha256("ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789  codice-plugin.zip\n"), "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "hash em minúsculas")
+eq(core.parseSha256("não é um hash"), nil, "texto sem hash")
+eq(core.isNewer("0.3.0"), true, "mais nova")
+eq(core.isNewer(core.PLUGIN_VERSION), false, "a mesma")
+eq(core.isNewer("0.1.0"), false, "mais velha")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)
