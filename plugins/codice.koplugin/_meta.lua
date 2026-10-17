@@ -1,5 +1,5 @@
 local _ = require("gettext")
 return {
-    fullname = _("Códice (protótipo)"),
-    description = _([[Protótipo do leitor do Códice: testa a conexão, a configuração ao vivo e capas numa lista.]]),
+    fullname = _("Códice"),
+    description = _([[Conecta este leitor a uma instância do Códice por um código aprovado no site e mantém o catálogo (OPDS) e a sincronização de progresso (KOSync) configurados.]]),
 }
