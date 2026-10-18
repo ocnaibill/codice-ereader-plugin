@@ -161,6 +161,7 @@ local plugin = {
     say = function(_, t) said[#said + 1] = t end,
     booksDir = function() return "/tmp/codice-stub-data/books" end,
     openBook = function(_, card) opened[#opened + 1] = card end,
+    chooseAndOpen = function(_, card) opened[#opened + 1] = card end,
 }
 os.execute("mkdir -p /tmp/codice-stub-data/books")
 
@@ -170,8 +171,8 @@ answers["/device/categories"] = { data = { data = {
 answers["/device/people"] = { data = { data = { { id = 11, name = "Frank Herbert", works = 3 }, { id = 12, name = "Stanisław Lem", works = 1 } }, total = 2, page = 1, pages = 1,
     letters = { { letter = "F", people = 1 }, { letter = "S", people = 1 } } } }
 answers["/device/collections?"] = { data = { data = { { id = 21, name = "Duna", workCount = 6 } }, page = 1, total = 1, totalPages = 1 } }
-answers["/device/collections/21"] = { data = { collection = { id = 21, name = "Duna" }, works = { { id = 1, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/1", percent = 10, available = true },
-    { id = 2, title = "Messias", author = "Frank Herbert", coverUrl = "/covers/2", available = true } } } }
+answers["/device/collections/21"] = { data = { collection = { id = 21, name = "Duna" }, continue = { id = 1, title = "Duna", unit = "chapter", position = 1, started = true, begun = true }, works = { { id = 1, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/1", percent = 10, available = true, unit = "chapter", position = 1, started = true },
+    { id = 2, title = "Messias", author = "Frank Herbert", coverUrl = "/covers/2", available = true, unit = "chapter", position = 2 } } } }
 answers["/device/works"] = { data = { data = { { id = 1, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/1", percentComplete = 42, fileId = 10, format = "epub", fileCount = 1 },
     { id = 2, title = "Solaris", author = "Stanisław Lem", coverUrl = "/covers/2", percentComplete = 0, fileId = 20, format = "epub", fileCount = 1 },
     { id = 3, title = "Absolute Batman #5", author = "Scott Snyder", coverUrl = "/covers/3", percentComplete = 0, fileId = 30, format = "cbz", fileCount = 1,
@@ -253,7 +254,7 @@ for _, mode in ipairs({ "online", "offline" }) do
     check(lib.model.kind == "list", mode .. ": séries e coleções")
     if #lib.model.rows >= 1 then
         tapRow(lib, 1)
-        check(lib.model.kind == "grid", mode .. ": a série ou coleção abre a grade")
+        check(lib.model.kind == "series", mode .. ": a série ou coleção abre a página da série")
     end
     while #lib.stack > 1 do lib:back() end
 
@@ -307,12 +308,16 @@ for _, hit in ipairs(libs.hits) do
     if hit.y > 150 and hit.w > 200 and hit.h > 300 then series_hit = hit; break end
 end
 series_hit.fn()
-check(libs.model.kind == "grid" and #libs.model.cards == 2 and libs.model.title == "Absolute Batman", "tocar na série mostra os capítulos dela")
+check(libs.model.kind == "series" and #libs.model.rows == 2 and libs.model.title == "Duna", "tocar na série abre a página dela, com os capítulos")
+check(libs.model.series.go_on ~= nil and libs.model.series.go_on.text:find("Continuar", 1, true) ~= nil, "a página da série tem o botão de continuar")
+opened = {}
+for _, hit in ipairs(libs.hits) do if hit.w > 600 and hit.h > 50 and hit.y > 500 then hit.fn(); break end end
+check(#opened == 1 and opened[1].fileCount == 2, "tocar num capítulo o abre (perguntando o arquivo se houver mais de um)")
 -- the list of collections opens the works of the collection (the answer is { collection, works })
 local libc = open()
 libc:push("collections")
 libc.model.rows[1].go()
-check(libc.model.kind == "grid" and #libc.model.cards == 2, "uma coleção da lista abre as obras dela")
+check(libc.model.kind == "series" and #libc.model.rows == 2, "uma coleção da lista abre a página dela, com as obras")
 -- the authors: a letter at a time, as many rows as fit, and the first letter is the one that opens
 calls = {}
 local libp = open()

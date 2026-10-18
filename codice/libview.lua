@@ -224,6 +224,109 @@ function Libview.detail(work, shelf_work, online)
     }
 end
 
+-- ------------------------------------------------------------ the page of a series (comics and manga: its chapters or volumes)
+
+local UNITS = {
+    volume = { short = "Vol.", one = { "volume", "volumes" }, heading = "VOLUMES" },
+    chapter = { short = "Cap.", one = { "capítulo", "capítulos" }, heading = "CAPÍTULOS" },
+    oneshot = { short = "Único", one = { "único", "únicos" }, heading = "ÚNICOS" },
+    extra = { short = "Compl.", one = { "complementar", "complementares" }, heading = "COMPLEMENTARES" },
+}
+
+--- The number as the Portuguese writes it: 27.5 is "27,5", 3.0 is "3".
+local function numberText(n)
+    n = tonumber(n)
+    if not n then return "—" end
+    if n == math.floor(n) then return tostring(math.floor(n)) end
+    return (tostring(n):gsub("%.", ","))
+end
+
+--- What a work is called in its series: "Vol. 3", "Cap. 27,5", "Único"; with no unit, the number alone, or nothing.
+function Libview.unitLabel(unit, position)
+    local u = UNITS[unit]
+    if not u then return position and numberText(position) or "" end
+    if unit == "oneshot" or unit == "extra" then return u.short end
+    return u.short .. " " .. numberText(position)
+end
+
+--- What a step of the series is called on the button: "Cap. 5" when it has a unit and a number, else its title.
+function Libview.stepText(step)
+    if type(step) ~= "table" then return "" end
+    if step.unit and UNITS[step.unit] and (step.position ~= nil or step.unit == "oneshot" or step.unit == "extra") then
+        return Libview.unitLabel(step.unit, step.position)
+    end
+    return step.title or ""
+end
+
+--- "Continuar: Cap. 5", "Próximo: Cap. 6", "Começar: Cap. 1" (the web's wording).
+function Libview.goOnText(step)
+    local verb = step.started and "Continuar" or (step.begun and "Próximo" or "Começar")
+    return verb .. ": " .. Libview.stepText(step)
+end
+
+--- The word of the unit when every work of the sequence has the same one ("capítulos"), else "obras". `heading` is the same in capitals.
+local function sequenceWord(works)
+    local units, n = {}, 0
+    for _, w in ipairs(works) do
+        if w.available ~= false and w.unit ~= "extra" then
+            units[w.unit or ""] = true
+            n = n + 1
+        end
+    end
+    local only, count = nil, 0
+    for u in pairs(units) do only, count = u, count + 1 end
+    local def = count == 1 and UNITS[only] or nil
+    if def then return def.one, def.heading end
+    return { "obra", "obras" }, "OBRAS"
+end
+
+--- The sheet of a series from the answer of /device/collections/{id} (`{ collection, works, continue }`), and the shelf (what is on the device):
+--- `{ name, cover, subtitle, go_on, heading, rows }`; a row is `{ id, label, title, state, here, card }` in the order of the series.
+function Libview.seriesSheet(data, shelf)
+    local c = type(data.collection) == "table" and data.collection or {}
+    local rows, read, available = {}, 0, 0
+    local list = type(data.works) == "table" and data.works or {}
+    local words, heading = sequenceWord(list)
+    for _, w in ipairs(list) do
+        if w.available ~= false then
+            available = available + 1
+            if w.completed then read = read + 1 end
+            local mine = shelf and shelf.works[tostring(w.id)]
+            local here = mine ~= nil and next(mine.downloaded or {}) ~= nil
+            local state
+            if w.completed then
+                state = "lido"
+            elseif w.started or (tonumber(w.percent) or 0) > 0 then
+                state = core.readLabel(w.percent):gsub(" lido", "")
+            end
+            local label = Libview.unitLabel(w.unit, w.position)
+            rows[#rows + 1] = {
+                id = w.id, label = label, title = w.title, state = state, here = here,
+                card = { id = w.id, title = w.title, author = w.author, cover = w.coverUrl, percent = tonumber(w.percent) or 0, completed = w.completed == true,
+                         fileCount = 2, key = "codice:" .. tostring(w.id) },
+            }
+        end
+    end
+    local subtitle = available .. " " .. words[available == 1 and 1 or 2]
+    if read > 0 then subtitle = subtitle .. " · " .. read .. (read == 1 and " lido" or " lidos") end
+    local go_on
+    if type(data.continue) == "table" and data.continue.id then
+        local step = data.continue
+        local percent
+        for _, r in ipairs(rows) do
+            if r.id == step.id and r.card.percent > 0 and step.started then percent = r.card.percent end
+        end
+        go_on = { id = step.id, text = Libview.goOnText(step) .. (percent and (" (" .. math.floor(percent + 0.5) .. "%)") or ""), card = nil }
+        for _, r in ipairs(rows) do
+            if r.id == step.id then go_on.card = r.card end
+        end
+        go_on.card = go_on.card or { id = step.id, title = step.title, fileCount = 2, key = "codice:" .. tostring(step.id) }
+    end
+    local cover = c.coverUrl
+    if (not cover or cover:find("placeholder", 1, true)) and rows[1] then cover = rows[1].card.cover end
+    return { name = c.name, cover = cover, subtitle = subtitle, go_on = go_on, heading = heading, rows = rows }
+end
+
 --- The title of the header of a list from its spec.
 function Libview.listTitle(spec)
     return spec.title or "Obras"

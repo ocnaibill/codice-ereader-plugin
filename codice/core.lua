@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.10.0"
+M.PLUGIN_VERSION = "0.11.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
