@@ -514,6 +514,15 @@ function M.install(ui)
     end
     ui:registerModule("codice", instance)
     M.live = instance
+    if not M._modules_registered then
+        M._modules_registered = true
+        -- the modules of the Códice for the home of the Simple UI, by path: the registry loads them only when it lists the modules, so that
+        -- the start of KOReader does not pay for them
+        pcall(function()
+            local Registry = require("modules/moduleregistry")
+            Registry.register("codice/modules/continue")
+        end)
+    end
     return instance
 end
 

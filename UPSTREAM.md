@@ -29,6 +29,10 @@ Este plugin é um **fork do [Simple UI](https://github.com/doctorhetfield-cmd/si
 
 Os arquivos `LICENSE`, `README.md` e `.gitignore` também diferem do upstream (o README e a licença dele estão em `README.simpleui.md` e `LICENSE.simpleui`), e **removemos `.github/FUNDING.yml`** (o link de apoio é do autor original, não nosso). O `CONTRIBUTING.md` é o dele e vale para o que mexe nos ganchos do KOReader (ver a seção "Patching KOReader classes").
 
+## Como os módulos do Códice entram na home do Simple UI
+
+Pelo registro de módulos externos que o próprio Simple UI oferece (`Registry.register("codice/modules/<nome>")`, feito em `codice/plugin.lua`), sem mexer em arquivo dele. Cada módulo é feito sobre `engines/sui_book_grid.lua` (`GridRenderer.makeModule`) com uma célula própria (`renderCell`), como o módulo de Coleções dele faz. **Se uma atualização do upstream mudar o contrato de `makeModule` (os campos `getFileList`, `renderCell`, `getCellHeight`), os módulos em `codice/modules/` são os primeiros a conferir.**
+
 ## Ideias para devolver ao upstream
 
 Pontos de extensão genéricos que facilitariam o fork (módulos externos que desenham uma tela inteira, abas de barra registradas por plugin com título e ícone próprios). Se virarem pull request, deixam de ser alteração nossa.
