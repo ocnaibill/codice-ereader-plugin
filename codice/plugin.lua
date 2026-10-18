@@ -519,7 +519,7 @@ end
 --- Starts the Códice for a main screen of KOReader (the file manager or the reader) and registers it there as a module, so that it is
 --- given the events and the menu. Safe to call twice for the same screen.
 function M.install(ui)
-    if ui.codice then return ui.codice end
+    if ui[core.MODULE_SLOT] then return ui[core.MODULE_SLOT] end
     if not M._compat_done then
         M._compat_done = true
         pcall(turnOffTheOriginalSimpleUI)
@@ -529,7 +529,7 @@ function M.install(ui)
         logger.err("codice: could not start:", instance)
         return nil
     end
-    ui:registerModule("codice", instance)
+    ui:registerModule(core.MODULE_SLOT, instance)
     M.live = instance
     if not M._modules_registered then
         M._modules_registered = true

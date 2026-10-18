@@ -83,7 +83,7 @@ end
 local function plugin()
     local FM = package.loaded["apps/filemanager/filemanager"]
     local ui = FM and FM.instance
-    return (ui and ui.codice) or (package.loaded["codice/plugin"] or {}).live
+    return (ui and ui[core.MODULE_SLOT]) or (package.loaded["codice/plugin"] or {}).live
 end
 
 local function listBooks()
