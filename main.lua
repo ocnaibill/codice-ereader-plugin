@@ -203,10 +203,11 @@ function SimpleUIPlugin:init()
                 logger.info("simpleui: updated from", prev_version, "to", current_version,
                     "— restart recommended")
                 UIManager:scheduleIn(1, function()
-                    UI.Notify.toast(string.format(
-                            _("Simple UI was updated (%s → %s).\n\nA restart is recommended to apply all changes cleanly."),
-                            prev_version, current_version
-                        ), 6)
+                    -- (the Códice's wording: it is the Códice that was updated)
+                    local ok_msg, msg = pcall(function()
+                        return require("codice/core").updatedNotice(current_version, require("device"):isKindle())
+                    end)
+                    UI.Notify.toast(ok_msg and msg or string.format("Códice atualizado (%s → %s).", prev_version, current_version), 6)
                 end)
             end
             SUISettings:set("simpleui_loaded_version", current_version)

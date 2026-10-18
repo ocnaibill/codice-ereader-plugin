@@ -618,5 +618,16 @@ eq(core.passage("abcdefghijklmnopqrstuvwxyz", 10), "abcdefghij…", "palavra mai
 local qs = core.placeQuestion({ percent = 50, chapter = "C", snippet = "daqui" }, { percentage = 0.64, device = "Web", timestamp = 1 }, nil, "K", 10)
 eq(qs.here.snippet, "daqui", "o trecho daqui entra na pergunta")
 
+-- a tela de bloqueio
+local fit = core.lockscreenFit(400, 600, 1236, 1648)
+eq(fit.h, 1318, "a capa ocupa quatro quintos da altura"); eq(fit.w, 878, "e mantém a proporção"); eq(fit.x, 179, "no meio"); eq(fit.y < (1648 - fit.h) / 2, true, "um pouco acima do centro")
+local wide = core.lockscreenFit(1000, 500, 1236, 1648)
+eq(wide.w, 988, "capa larga: ocupa quatro quintos da largura"); eq(wide.h, 494, "e a altura que a proporção dá")
+local cs = core.lockscreenCovers({ { id = 1 }, { id = 2 }, { id = 3 }, { id = 4 } }, function(c) return c.id ~= 2 end, 2)
+eq(#cs, 2, "no máximo dois"); eq(cs[1].id, 1, "em ordem"); eq(cs[2].id, 3, "pula quem não tem capa")
+eq(#core.lockscreenCovers({}, function() return true end), 0, "sem livros, sem capas"); eq(#core.lockscreenCovers(nil, function() return true end), 0, "sem lista")
+eq(core.lockscreenSignature({ { id = 1 }, { id = 3 } }, 600, 800), "600x800:1,3", "assinatura"); eq(core.lockscreenSignature({}, 600, 800), "600x800:", "sem livros")
+eq(core.updatedNotice("0.14.0", true), "Códice atualizado neste Kindle para a versão 0.14.0.", "aviso no Kindle"); eq(core.updatedNotice("0.14.0", false), "Códice atualizado neste leitor para a versão 0.14.0.", "em outro leitor")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

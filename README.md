@@ -110,3 +110,13 @@ Ao abrir um livro com Wi-Fi, o plugin compara o lugar daqui com o que o Códice 
 ### Destaques e notas, os mesmos aqui e no Códice
 
 Num EPUB baixado do Códice, o que você grifa ou anota no KOReader vai para o Códice (e aparece na aba Anotações e no web), e o que está no Códice e ainda não está no livro é trazido para ele ao abri-lo: o trecho é achado no livro pelo texto, a partir do parágrafo que o web guardou, e aparece como qualquer destaque do KOReader (na lista de marcadores, nas exportações dele). Editar a nota ou apagar o destaque vale dos dois lados; sem rede, a mudança fica numa fila no livro e segue ao reconectar. Apagar aqui apaga no Códice o que o aparelho criou ou já recebeu de lá; o que só existe no web e nunca veio ao aparelho não é tocado. Não há cor (o Kindle é preto e branco): o destaque novo daqui recebe a cor padrão do Códice, o editado mantém a sua, e o que veio do web chega com o traço padrão. PDF e quadrinhos ficam para depois. Precisa do servidor com `PUT`/`DELETE`/`GET /device/files/{id}/notes`.
+
+### Tela de bloqueio
+
+A tela de bloqueio do KOReader mostra a capa de uma das obras baixadas do Códice, uma diferente a cada vez que o leitor dorme, com a palavra **Códice** no canto inferior esquerdo; sem nenhuma obra baixada, só a palavra no canto. O plugin faz as imagens (a capa inteira sobre branco, do tamanho da tela, até 12 obras) numa pasta própria e aponta o protetor de tela do KOReader para ela; elas são refeitas quando as obras do aparelho mudam. Vem ligada; em **Códice → Tela de bloqueio com as capas** liga e desliga, e desligar devolve o protetor de tela que você tinha.
+
+### Detalhes
+
+- Ao fechar um livro aberto pela Biblioteca, a Biblioteca volta para onde você estava (a mesma página da série, da lista...).
+- Em listas de até três obras (Favoritos com poucos, por exemplo), as capas usam a largura toda.
+- Depois de uma atualização, o aviso diz "Códice atualizado neste Kindle para a versão X.Y.Z".

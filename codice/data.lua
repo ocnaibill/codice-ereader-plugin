@@ -80,6 +80,9 @@ function Data.refresh(on_change, force)
     if not ok then logger.warn("codice: refreshing the home failed:", err) end
 end
 
+--- Where the person was in the library when a book was opened from it ({ action_id, stack }): the library comes back there when the book is closed.
+Data.return_to = nil
+
 -- the books opened from the home, by the path of the file: so that when one is closed the home knows which work it was
 local opened = {}
 
