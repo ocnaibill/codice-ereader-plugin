@@ -319,6 +319,16 @@ function Codice:booksDir()
     return dir
 end
 
+--- Opens the library (DEC-198): categories, authors, series, formats and what is on the device, with or without a network.
+function Codice:openLibrary()
+    if not self:connection() then
+        return self:say("Conecte este leitor a um Códice primeiro: Códice → Conectar.")
+    end
+    guarded("abrir a biblioteca", function()
+        UIManager:show(require("codice/library"):new{ plugin = self })
+    end)()
+end
+
 --- Opens a book of the home: the file is fetched if it is not on the reader yet. `before` runs just before the reader opens.
 function Codice:openBook(card, before)
     local c = self:connection()
@@ -462,6 +472,11 @@ function Codice:addToMainMenu(menu_items)
             {
                 text_func = function() return self:connection() and "Conectar a outra instância" or "Conectar" end,
                 callback = function() Pairing.start(self) end,
+            },
+            {
+                text = "Biblioteca",
+                enabled_func = function() return self:connection() ~= nil end,
+                callback = function() self:openLibrary() end,
             },
             {
                 text = "Abrir o Códice",
@@ -629,6 +644,15 @@ function M.install(ui)
             Registry.register("codice/modules/stats")
             Registry.register("codice/modules/note")
             for n = 1, core.SHELF_SLOTS do Registry.register("codice/modules/shelf" .. n) end
+        end)
+        -- the library, as an action that can be a tab of the bar or a button of the Simple UI
+        pcall(function()
+            local QA = require("features/sui_quickactions")
+            local Config = require("infra/sui_config")
+            QA.register{
+                id = "codice_library", label = "Biblioteca do Códice", icon = Config.ICON.library, is_in_place = false,
+                execute = function() if M.live then M.live:openLibrary() end end,
+            }
         end)
         -- the ready-made home, among the presets of the Simple UI (it hands out its list of built-in presets; no file of its own is changed)
         pcall(function()

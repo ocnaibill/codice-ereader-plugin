@@ -30,6 +30,7 @@ local UI = require("infra/sui_core")
 local core = require("codice/core")
 local Data = require("codice/data")
 local Covers = require("codice/covers")
+local Coverimg = require("codice/coverimg")
 
 local MAX_ITEMS = 5
 local COVERS_PER_STEP = 3
@@ -107,52 +108,10 @@ local function dims(cw, caption_lines)
              cell_h = h + gap + bar_h + gap + text_h + gap }
 end
 
--- the covers already cut to the box, by file and size: drawing again does not read and scale the file again
-local crops, crop_order = {}, {}
-local MAX_CROPS = 16
-
---- The cover at `path` filling a box of w x h without distortion, cutting what overflows (the box is always full). Nil when it cannot be done:
---- the caller then draws the cover the plain way.
-local function croppedCover(path, w, h)
-    local key = path .. "|" .. w .. "x" .. h
-    if crops[key] then return crops[key] end
-    local ok, bb = pcall(function()
-        local RenderImage = require("ui/renderimage")
-        local Blitbuffer = require("ffi/blitbuffer")
-        local src = RenderImage:renderImageFile(path, false)
-        if not src then return nil end
-        local crop = core.coverCrop(src:getWidth(), src:getHeight(), w, h)
-        local scaled = RenderImage:scaleBlitBuffer(src, crop.w, crop.h, true)
-        local out = Blitbuffer.new(w, h, scaled:getType())
-        out:blitFrom(scaled, 0, 0, crop.x, crop.y, w, h)
-        if scaled ~= src then scaled:free() end
-        return out
-    end)
-    if not ok or not bb then
-        if not ok then require("logger").warn("codice: cutting a cover failed:", bb) end
-        return nil
-    end
-    crops[key] = bb
-    crop_order[#crop_order + 1] = key
-    if #crop_order > MAX_CROPS then
-        local old = table.remove(crop_order, 1)
-        if crops[old] then crops[old]:free(); crops[old] = nil end
-    end
-    return bb
-end
-
 local function coverWidget(d, card)
     local path = Covers.path(card)
     if Covers.kept(path) then
-        local bb = croppedCover(path, d.cover_w - 2, d.cover_h - 2)
-        local image
-        if bb then
-            image = ImageWidget:new{ image = bb, image_disposable = false }
-        else
-            image = CenterContainer:new{ dimen = Geom:new{ w = d.cover_w - 2, h = d.cover_h - 2 },
-                ImageWidget:new{ file = path, width = d.cover_w - 2, height = d.cover_h - 2, scale_factor = 0 } }
-        end
-        return FrameContainer:new{ bordersize = 1, padding = 0, margin = 0, image }
+        return Coverimg.widget(path, d.cover_w, d.cover_h)
     end
     -- no cover (yet): the stand-in of the Simple UI, with the title, the same one it draws for a book with no cover
     local SH = package.loaded["modules/module_books_shared"]

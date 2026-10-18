@@ -4,6 +4,7 @@
 package.path = "./?.lua;" .. package.path
 local core = require("codice/core")
 local Shelf = require("codice/shelf")
+local Libview = require("codice/libview")
 
 local failures, count = 0, 0
 local function eq(got, want, label)
@@ -448,6 +449,47 @@ eq(core.offlineNotice("wifi_off", 5, fmtDate), "Sem conexão: mostrando só o qu
 eq(core.offlineNotice("server_down", 5, fmtDate), "Servidor não responde: mostrando só o que está no aparelho. Atualizado em 16/10.", "servidor fora")
 eq(core.offlineNotice("wifi_off", nil, fmtDate), "Sem conexão: mostrando só o que está no aparelho.", "sem data de atualização")
 eq(core.offlineNotice("wifi_off", 0, fmtDate), "Sem conexão: mostrando só o que está no aparelho.", "data zero é nenhuma")
+
+-- a biblioteca, como dados
+local wc = Libview.workCard({ id = 7, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/7", percentComplete = 42, inProgress = true, isFavorite = true,
+    fileId = 70, format = "epub", fileCount = 2, series = "Duna", continue = { fileId = 71, format = "pdf" } })
+eq(wc.id, 7, "id do cartão"); eq(wc.cover, "/covers/7", "capa"); eq(wc.percent, 42, "progresso"); eq(wc.favorite, true, "favorita")
+eq(wc.fileId, 71, "o arquivo é o que se lê"); eq(wc.format, "pdf", "e o formato dele"); eq(wc.key, "codice:7", "chave")
+eq(Libview.workCard({ id = 1, title = "X" }).percent, 0, "sem progresso, zero")
+local cc = Libview.collectionWorkCard({ id = 3, title = "Vol 1", author = "A", coverUrl = "/c/3", percent = 10, completed = true })
+eq(cc.fileCount, 2, "obra de coleção: pergunta os arquivos ao abrir"); eq(cc.completed, true, "concluída"); eq(cc.percent, 10, "progresso")
+local cards = Libview.cardsOf({ data = { { id = 1, title = "A" }, { title = "sem id" }, { id = 2, title = "B" } } })
+eq(#cards, 2, "ignora o que não tem id"); eq(cards[2].title, "B", "em ordem")
+cards = Libview.cardsOf({ works = { { id = 1, title = "A", available = true }, { id = 2, title = "Sumiu", available = false } } }, true)
+eq(#cards, 1, "em coleção, as indisponíveis ficam de fora")
+eq(#Libview.cardsOf(nil), 0, "sem resposta, sem cartões"); eq(#Libview.cardsOf({}), 0, "resposta vazia")
+local shelfIdx = Shelf.new()
+Shelf.noteDownload(shelfIdx, { id = 1, title = "A", authors = {}, categories = {}, files = {} }, 10, "10 - A.epub", 5, 1)
+local marked = Libview.markDownloaded({ { id = 1 }, { id = 2 } }, shelfIdx)
+eq(marked[1].downloaded, true, "A está no aparelho"); eq(marked[2].downloaded, false, "B não")
+eq(Libview.queryString({ b = "x y", a = 1, c = "ã&" }), "a=1&b=x%20y&c=%C3%A3%26", "texto de consulta em ordem, com escape")
+local pr = Libview.worksParams({ category = 5 }, 3)
+eq(pr.category, 5, "categoria"); eq(pr.page, 3, "página"); eq(pr.limit, 6, "seis por página"); eq(pr.series, nil, "em categoria, a série não se dobra"); eq(pr.sort, "title", "por título")
+eq(Libview.worksParams({}, 1).series, "collapse", "na biblioteca toda, a série se dobra")
+eq(Libview.worksParams({ search = "duna" }, 1).search, "duna", "busca"); eq(Libview.worksParams({ search = "" }, 1).search, nil, "busca vazia não vai")
+eq(Libview.worksParams({ favorite = true, inProgress = true }, 1).favorite, "true", "favoritas"); eq(Libview.worksParams({ inProgress = true }, 1).inProgress, "true", "lendo")
+eq(Libview.pagerText(2, 14), "2 / 14", "contagem de páginas"); eq(Libview.pagerText(1, 1), "", "uma página não mostra"); eq(Libview.pagerText(1, nil), "", "sem total")
+eq(Libview.sizeText(0), "0 B", "zero"); eq(Libview.sizeText(2048), "2 KB", "KB"); eq(Libview.sizeText(1.2 * 1024 * 1024), "1,2 MB", "MB com vírgula"); eq(Libview.sizeText(3 * 1024 * 1024 * 1024), "3,0 GB", "GB")
+local rr = Libview.rootRows(9, 340 * 1024 * 1024)
+eq(#rr, 6, "seis linhas na raiz"); eq(rr[1].id, "categories", "categorias primeiro"); eq(rr[5].detail, "9 obras · 340,0 MB", "no aparelho: obras e tamanho"); eq(rr[6].id, "all", "todas por último")
+eq(Libview.rootRows(1, 0)[5].detail, "1 obra", "uma obra"); eq(Libview.rootRows(nil)[5].detail, nil, "sem saber, sem detalhe")
+local det = Libview.detail({ id = 4, title = "Scythe", author = "Neal Shusterman", series = "Arc of a Scythe", seriesIndex = 1, percent = 42,
+    categories = { { id = 1, name = "Ficção" }, { id = 2, name = "Distopia", parentId = 1 } },
+    files = { { id = 40, format = "epub", language = "pt", primary = true, sizeBytes = 1258291 }, { id = 41, format = "epub", language = "en", sizeBytes = 900 } } },
+    { downloaded = { ["40"] = { name = "40 - S.epub" } } }, true)
+eq(det.lines[1], "Arc of a Scythe · 1", "série e número"); eq(det.lines[2], "42% lido", "quanto leu"); eq(det.lines[3], "Distopia", "a categoria mais específica")
+eq(det.files[1].label, "Português · EPUB (principal)", "o principal"); eq(det.files[1].state, "no aparelho", "está no aparelho"); eq(det.files[1].here, true, "marcado")
+eq(det.files[2].state, "baixar · 900 B", "o outro se baixa"); eq(det.files[2].label, "Inglês · EPUB", "idioma")
+eq(det.read_text, "Continuar lendo", "em andamento"); eq(det.can_read, true, "dá para ler"); eq(det.can_remove, true, "dá para remover do aparelho")
+local off = Libview.detail({ id = 5, title = "Y", files = { { id = 50, format = "pdf" } } }, nil, false)
+eq(off.can_read, false, "sem conexão e sem arquivo local, não se lê"); eq(off.files[1].state, "só com conexão", "avisa"); eq(off.can_remove, false, "nada a remover"); eq(off.read_text, "Ler", "ainda não começou")
+local done = Libview.detail({ id = 6, title = "Z", completed = true, percent = 100, series = "S", seriesIndex = 2.5, files = {} }, nil, true)
+eq(done.lines[1], "S · 2.5", "índice fracionado"); eq(done.lines[2], "Concluído", "concluído"); eq(done.read_text, "Ler", "concluído lê de novo")
 
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)
