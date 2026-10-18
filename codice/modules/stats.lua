@@ -15,9 +15,9 @@ local core = require("codice/core")
 local Plain = require("codice/modules/plain")
 
 local function sizes()
-    local gap = Plain.scale(3)
-    local label, big, detail = SUIStyle.FS_DETAIL, SUIStyle.FS_TITLE * 2, SUIStyle.FS_DETAIL
-    local h = Plain.PAD + Plain.lineHeight(label) + gap + Plain.lineHeight(big, true) + gap + 2 * Plain.lineHeight(detail) + Plain.PAD2
+    local gap = Plain.scale(2)
+    local label, big, detail = math.floor(SUIStyle.FS_CAPTION * 1.25), math.floor(SUIStyle.FS_TITLE * 1.4), math.floor(SUIStyle.FS_CAPTION * 1.25)
+    local h = Plain.PAD2 + Plain.lineHeight(label) + gap + Plain.lineHeight(big, true) + gap + 2 * Plain.lineHeight(detail) + Plain.PAD2
     return { gap = gap, label = label, big = big, detail = detail, h = h }
 end
 
@@ -39,7 +39,7 @@ return Plain.make{
         local function column(label, big, line1, line2)
             return LeftContainer:new{ dimen = Geom:new{ w = col_w, h = z.h }, VerticalGroup:new{
                 align = "left",
-                VerticalSpan:new{ width = Plain.PAD },
+                VerticalSpan:new{ width = Plain.PAD2 },
                 Plain.text(label, z.label, { sub = true, max_width = text_w }),
                 VerticalSpan:new{ width = z.gap },
                 Plain.text(big, z.big, { bold = true, max_width = text_w }),

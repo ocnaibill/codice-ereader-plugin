@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.6.0"
+M.PLUGIN_VERSION = "0.6.1"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -283,6 +283,13 @@ function M.dateLabel(t)
     return string.format("%d de %s de %d", t.day, MONTHS[t.month] or "?", t.year)
 end
 
+local WEEKDAYS = { "domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado" }
+
+--- "domingo, 18 de outubro" (the year is left out: it is a glance at the day).
+function M.dayLabel(t)
+    return string.format("%s, %d de %s", WEEKDAYS[t.wday] or "?", t.day, MONTHS[t.month] or "?")
+end
+
 --- "09:11".
 function M.timeLabel(t)
     return string.format("%02d:%02d", t.hour, t.min)
@@ -371,20 +378,26 @@ function M.noteSignature(home)
 end
 
 --- The home of the Códice as a preset of the Simple UI: pages of module ids. The first screen has what the web has on top (the greeting and the
---- numbers) and what to continue; the next ones, the favorites, a note and the shelves. Three pages because four rows of covers do not fit on one
+--- numbers) and what to continue; the next ones, the favorites and the shelves. Three pages because four rows of covers do not fit on one
 --- screen of an e-reader, and a page turn is cheaper than a scroll on e-ink.
 M.PRESET_ID = "codice_home"
 function M.homePreset()
     return {
         id = M.PRESET_ID,
         name = "Códice",
-        desc = "Saudação, números, continuar lendo, favoritos, nota e prateleiras",
+        desc = "Saudação, números, continuar lendo, favoritos e prateleiras",
         layout = { pages = {
             { id = 1, modules = { "codice_greeting", "codice_stats", "codice_continue" } },
-            { id = 2, modules = { "codice_favorites", "codice_note", "codice_shelf1" } },
+            { id = 2, modules = { "codice_favorites", "codice_shelf1" } },
             { id = 3, modules = { "codice_shelf2", "codice_shelf3" } },
         } },
-        settings = {},
+        -- five covers to a row (the most the Simple UI allows) make the rows lower: two shelves fit on a page
+        settings = {
+            simpleui_hs_codice_favorites_grid_cols = 5,
+            simpleui_hs_codice_shelf1_grid_cols = 5,
+            simpleui_hs_codice_shelf2_grid_cols = 5,
+            simpleui_hs_codice_shelf3_grid_cols = 5,
+        },
     }
 end
 
