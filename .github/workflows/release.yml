@@ -1,5 +1,6 @@
 name: release
 # A tag vX.Y.Z makes a release with the zip of the plugin and its SHA-256, which is what the plugin looks for when it updates itself.
+# The zip holds the plugin under plugins/codice.koplugin/ (what the updater of the plugin expects).
 on:
   push:
     tags: ['v*']
@@ -13,13 +14,23 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y luajit
       - name: the tag is the version of the plugin
         run: |
-          version=$(sed -n 's/^M.PLUGIN_VERSION = "\(.*\)"/\1/p' plugins/codice.koplugin/codice_core.lua)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then echo "tag $GITHUB_REF_NAME but the plugin says $version"; exit 1; fi
+          version=$(sed -n 's/^M.PLUGIN_VERSION = "\(.*\)"/\1/p' codice/core.lua)
+          meta=$(sed -n 's/^ *version *= *"\(.*\)",/\1/p' _meta.lua)
+          if [ "v$version" != "$GITHUB_REF_NAME" ] || [ "$meta" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME, codice/core.lua says $version, _meta.lua says $meta"; exit 1
+          fi
+      - run: find . -name '*.lua' -not -path './.git/*' -print0 | xargs -0 -n1 luajit -bl > /dev/null
       - run: luajit tests/run.lua
       - name: package
         run: |
-          zip -r codice-plugin.zip plugins
+          mkdir -p stage/plugins/codice.koplugin
+          rsync -a \
+            --exclude='.git' --exclude='.github' --exclude='.gitignore' --exclude='stage' --exclude='dist' --exclude='tests' --exclude='scripts' \
+            --exclude='README*.md' --exclude='CONTRIBUTING.md' \
+            ./ stage/plugins/codice.koplugin/
+          (cd stage && zip -qr ../codice-plugin.zip plugins)
           sha256sum codice-plugin.zip > codice-plugin.zip.sha256
+          unzip -l codice-plugin.zip | tail -1
       - name: release
         env:
           GH_TOKEN: ${{ github.token }}

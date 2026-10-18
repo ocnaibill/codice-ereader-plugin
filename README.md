@@ -2,11 +2,13 @@
 
 Plugin do [Códice](https://github.com/ocnaibill/codice) para o KOReader (Kindle com jailbreak, no começo). Conecta o leitor à sua instância por um **código aprovado no site** (sem digitar senha na tela e-ink) e mantém no aparelho a configuração do catálogo (OPDS) e da sincronização de progresso (KOSync). Plano e decisões: issue [ocnaibill/codice#327](https://github.com/ocnaibill/codice/issues/327) e a proposta `docs/Codice_Proposta_Pareamento_Leitor_2026-10-17.md` do Códice. Licença AGPLv3, como o KOReader e o Códice.
 
-**Estado:** o pareamento e a tela inicial funcionam num Kindle 10ª geração (testados pelo mantenedor). Na versão 0.3.0: a home rola, abre sozinha ao iniciar e ao fechar um livro, pergunta qual arquivo abrir e avisa quando um livro novo no aparelho começaria do início; **isso ainda não foi testado num aparelho**. A lógica (`codice_core.lua`) tem testes. Testado antes, num Kindle 10ª geração com KOReader v2026.07.2: HTTPS com a instância, configuração do OPDS ao vivo, capas numa lista e eventos de anotação (o protótipo, hoje em *Diagnóstico*).
+**Estado:** o pareamento, a tela inicial do Códice (a antiga), a escolha de arquivo e o OTA funcionam num Kindle 10ª geração (testados pelo mantenedor, versão 0.3.0). Na versão 0.4.0 o plugin passa a ter como base o **[Simple UI](https://github.com/doctorhetfield-cmd/simpleui.koplugin)** (MIT): a barra de navegação, a tela inicial em módulos, a barra de título e as configurações são dele, e as telas do Códice vão entrar nesse sistema. **Isso ainda não foi testado num aparelho.** Como acompanhamos o original: `UPSTREAM.md`; licenças: `NOTICE.md`.
 
 ## Instalar
 
-1. Ligue o Kindle ao computador por USB e copie a pasta `plugins/codice.koplugin` para `koreader/plugins/` (fica `koreader/plugins/codice.koplugin/main.lua`).
+> **Quem tem o Simple UI original instalado:** o plugin o desliga sozinho na primeira abertura (os dois carregam os mesmos módulos e não convivem) e pede para reiniciar. As configurações dele continuam valendo, porque o prefixo é o mesmo.
+
+1. Baixe `codice-plugin.zip` da página de [releases](https://github.com/ocnaibill/codice-ereader-plugin/releases/latest), descompacte, ligue o Kindle ao computador por USB e copie a pasta `plugins/codice.koplugin` para `koreader/plugins/` (fica `koreader/plugins/codice.koplugin/main.lua`). Quem já tem o plugin 0.3.1 ou mais novo atualiza por **Códice → Procurar atualização do plugin**, sem USB.
 2. Ejete o Kindle, abra o KOReader (reinicie se já estava aberto) e ligue o Wi-Fi.
 
 ## Conectar
@@ -19,6 +21,8 @@ Plugin do [Códice](https://github.com/ocnaibill/codice) para o KOReader (Kindle
 Depois disso, quando o Wi-Fi volta (no máximo a cada 6 horas), o plugin pergunta à instância se a configuração mudou e aplica só o que mudou. **Códice → Atualizar a configuração** faz isso na hora. **Desconectar este leitor** tira o catálogo e a sincronização do aparelho; para tirar o acesso do servidor, remova-o em Aplicativos, no site.
 
 ## Tela inicial
+
+> Nesta versão a tela de entrada é a do Simple UI. A tela do Códice descrita abaixo é a **antiga**: continua em **Códice → Abrir o Códice**, e só abre sozinha se você ligar **Abrir a tela antiga do Códice ao iniciar**; ela será substituída por módulos do Códice dentro da home do Simple UI.
 
 O Códice é a primeira tela: ao iniciar o KOReader, e toda vez que você fecha um livro, a home abre sozinha (mostra a última que o servidor mandou e atualiza se o Wi-Fi já estiver ligado, sem pedir). **Códice → Abrir o Códice ao iniciar** liga e desliga isso; o **Menu** da home tem **Arquivos do KOReader** para ir aos arquivos.
 
@@ -50,10 +54,11 @@ luajit tests/run.lua      # a lógica que não precisa do KOReader
 
 | Arquivo | O que tem |
 |---|---|
-| `codice_core.lua` | endereço, versões, o que cada resposta do servidor significa, o que se escreve no OPDS e no KOSync (puro, testado) |
-| `codice_http.lua` | pedidos JSON com os tempos do KOReader |
-| `codice_pairing.lua` | o fluxo na tela: endereço, código, QR, espera da aprovação |
-| `codice_home.lua` | a tela inicial: coluna que rola, capas que chegam depois, toque numa obra |
-| `codice_update.lua` | a atualização do plugin (download, hash, sintaxe, troca, volta atrás) |
-| `main.lua` | o plugin: menu, guardar o acesso, aplicar a configuração, abrir livros, atualizar quando a rede volta |
-| `codice_diag.lua` | os testes do protótipo |
+| `codice/core.lua` | endereço, versões, o que cada resposta do servidor significa, o que se escreve no OPDS e no KOSync, caminhos do zip (puro, testado) |
+| `codice/http.lua` | pedidos JSON com os tempos do KOReader |
+| `codice/pairing.lua` | o fluxo na tela: endereço, código, QR, espera da aprovação |
+| `codice/home.lua` | a tela inicial antiga do Códice: coluna que rola, capas que chegam depois, toque numa obra |
+| `codice/update.lua` | a atualização do plugin (download, hash, caminhos, sintaxe, troca, volta atrás) |
+| `codice/plugin.lua` | o módulo do Códice: menu, guardar o acesso, aplicar a configuração, abrir livros, atualizar quando a rede volta; é registrado pelo `main.lua` |
+| `codice/diag.lua` | os testes do protótipo |
+| `main.lua`, `infra/`, `screens/`, `engines/`, `features/`, `modules/`, `icons/`, `locale/` | o Simple UI (ver `UPSTREAM.md`) |

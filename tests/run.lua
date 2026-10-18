@@ -1,8 +1,8 @@
--- Testes da lógica que não precisa do KOReader (plugins/codice.koplugin/codice_core.lua).
+-- Testes da lógica que não precisa do KOReader (codice/core.lua).
 -- Rodar na raiz do repositório:  luajit tests/run.lua   (ou lua tests/run.lua)
 
-package.path = "plugins/codice.koplugin/?.lua;" .. package.path
-local core = require("codice_core")
+package.path = "./?.lua;" .. package.path
+local core = require("codice/core")
 
 local failures, count = 0, 0
 local function eq(got, want, label)
@@ -133,7 +133,7 @@ eq(core.pickRelease({ tag_name = "nightly", assets = release.assets }), nil, "ta
 eq(core.pickRelease(nil), nil, "sem release")
 eq(core.parseSha256("ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789  codice-plugin.zip\n"), "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "hash em minúsculas")
 eq(core.parseSha256("não é um hash"), nil, "texto sem hash")
-eq(core.isNewer("0.4.0"), true, "mais nova")
+eq(core.isNewer("0.5.0"), true, "mais nova")
 eq(core.isNewer(core.PLUGIN_VERSION), false, "a mesma")
 eq(core.isNewer("0.1.0"), false, "mais velha")
 
