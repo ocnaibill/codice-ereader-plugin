@@ -18,6 +18,19 @@ Libview.FORMAT_GROUPS = {
     { id = "audio", title = "Áudio" },
 }
 
+--- "5 volumes", "12 capítulos", "5 volumes · 3 capítulos" for a series (the `collapsed` of a work): what it holds.
+function Libview.seriesCount(c)
+    local out = {}
+    local function add(n, one, many)
+        n = tonumber(n) or 0
+        if n > 0 then out[#out + 1] = n .. " " .. (n == 1 and one or many) end
+    end
+    add(c.volumes, "volume", "volumes")
+    add(c.chapters, "capítulo", "capítulos")
+    add(c.oneShots, "one-shot", "one-shots")
+    return table.concat(out, " · ")
+end
+
 --- A work as the web sends it (/device/works) as the card the grid draws.
 function Libview.workCard(w)
     local card = {
@@ -25,6 +38,16 @@ function Libview.workCard(w)
         inProgress = w.inProgress == true, completed = w.completed == true or w.finished == true, favorite = w.isFavorite == true,
         series = w.series, fileCount = w.fileCount, format = w.format, key = "codice:" .. tostring(w.id),
     }
+    -- a work that stands for its whole series in a grid (the newest of it): the card is the series', and tapping it opens the series
+    if type(w.collapsed) == "table" and w.collapsed.collectionId then
+        local c = w.collapsed
+        card.collection = { id = c.collectionId, name = c.name }
+        card.title = c.name or card.title
+        card.cover = c.coverUrl or card.cover
+        card.subtitle = Libview.seriesCount(c)
+        card.percent = 0
+        card.key = "codice:series:" .. tostring(c.collectionId)
+    end
     if w.fileId then card.fileId = w.fileId end
     if type(w.continue) == "table" and w.continue.fileId then
         card.fileId, card.format = w.continue.fileId, w.continue.format or card.format
@@ -43,6 +66,7 @@ end
 --- The cards of an answer of the server: `{ data = works }` or, for a collection, `{ works = ... }`.
 function Libview.cardsOf(answer, from_collection)
     local out = {}
+    -- the answer of a collection is { collection, works, ... }; the one of a list of works is { data, total, ... }
     local list = type(answer) == "table" and (from_collection and answer.works or answer.data) or nil
     for _, w in ipairs(list or {}) do
         if type(w) == "table" and w.id and not (from_collection and w.available == false) then

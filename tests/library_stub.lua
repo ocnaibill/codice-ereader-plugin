@@ -170,10 +170,12 @@ answers["/device/categories"] = { data = { data = {
 answers["/device/people"] = { data = { data = { { id = 11, name = "Frank Herbert", works = 3 }, { id = 12, name = "Stanisław Lem", works = 1 } }, total = 2, page = 1, pages = 1,
     letters = { { letter = "F", people = 1 }, { letter = "S", people = 1 } } } }
 answers["/device/collections?"] = { data = { data = { { id = 21, name = "Duna", workCount = 6 } }, page = 1, total = 1, totalPages = 1 } }
-answers["/device/collections/21"] = { data = { works = { { id = 1, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/1", percent = 10, available = true },
+answers["/device/collections/21"] = { data = { collection = { id = 21, name = "Duna" }, works = { { id = 1, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/1", percent = 10, available = true },
     { id = 2, title = "Messias", author = "Frank Herbert", coverUrl = "/covers/2", available = true } } } }
 answers["/device/works"] = { data = { data = { { id = 1, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/1", percentComplete = 42, fileId = 10, format = "epub", fileCount = 1 },
-    { id = 2, title = "Solaris", author = "Stanisław Lem", coverUrl = "/covers/2", percentComplete = 0, fileId = 20, format = "epub", fileCount = 1 } }, total = 14, page = 1, totalPages = 3 } }
+    { id = 2, title = "Solaris", author = "Stanisław Lem", coverUrl = "/covers/2", percentComplete = 0, fileId = 20, format = "epub", fileCount = 1 },
+    { id = 3, title = "Absolute Batman #5", author = "Scott Snyder", coverUrl = "/covers/3", percentComplete = 0, fileId = 30, format = "cbz", fileCount = 1,
+      collapsed = { collectionId = 21, name = "Absolute Batman", volumes = 0, chapters = 5, oneShots = 0, coverUrl = "/covers/9" } } }, total = 14, page = 1, totalPages = 3 } }
 answers["/device/shelf"] = { data = { works = { { id = 1, title = "Duna", author = "Frank Herbert", authors = { { id = 11, name = "Frank Herbert" } }, cover = "/covers/1",
     series = "Duna", seriesIndex = 1, percent = 42, inProgress = true, favorite = false, categories = { { id = 1, name = "Ficção" }, { id = 2, name = "Ficção científica", parentId = 1 } },
     files = { { id = 10, format = "epub", language = "pt", primary = true, last = true, sizeBytes = 900000 }, { id = 11, format = "pdf", language = "en", sizeBytes = 5000000 } } } } } }
@@ -292,6 +294,34 @@ check(confirm and confirm.ok_callback ~= nil, "pede confirmação antes de remov
 if confirm and confirm.ok_callback then confirm.ok_callback() end
 check(io.open("/tmp/codice-stub-data/books/10 - Duna.epub", "rb") == nil, "o arquivo saiu do aparelho")
 check(next(Store.index().works) == nil, "e saiu da prateleira")
+
+-- a series in a grid opens the series, with all its chapters
+online = true
+answers["/device/works"] = { data = { data = { { id = 3, title = "Absolute Batman #5", author = "Scott Snyder", coverUrl = "/covers/3", fileId = 30, format = "cbz", fileCount = 1,
+    collapsed = { collectionId = 21, name = "Absolute Batman", volumes = 0, chapters = 5, coverUrl = "/covers/9" } } }, total = 1, page = 1, totalPages = 1 } }
+local libs = open()
+libs:push("works", { spec = { formatGroup = "comics", title = "Quadrinhos" } })
+check(libs.model.cards[1].title == "Absolute Batman" and libs.model.cards[1].subtitle == "5 capítulos", "a série aparece como série, com o que tem")
+local series_hit
+for _, hit in ipairs(libs.hits) do
+    if hit.y > 150 and hit.w > 200 and hit.h > 300 then series_hit = hit; break end
+end
+series_hit.fn()
+check(libs.model.kind == "grid" and #libs.model.cards == 2 and libs.model.title == "Absolute Batman", "tocar na série mostra os capítulos dela")
+-- the list of collections opens the works of the collection (the answer is { collection, works })
+local libc = open()
+libc:push("collections")
+libc.model.rows[1].go()
+check(libc.model.kind == "grid" and #libc.model.cards == 2, "uma coleção da lista abre as obras dela")
+-- the authors: a letter at a time, as many rows as fit, and the first letter is the one that opens
+calls = {}
+local libp = open()
+libp:push("people")
+check(libp.model.letter == "F", "os autores abrem na primeira letra")
+local asked_limit = false
+for _, u in ipairs(calls) do if u:find("limit=", 1, true) and u:find("letter=F", 1, true) then asked_limit = true end end
+check(asked_limit, "pede só o que cabe na tela, da letra F")
+check(libp.letters_h and libp.letters_h > 0, "o espaço das letras é descontado")
 
 print(string.format("%d verificações da biblioteca, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

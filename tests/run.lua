@@ -491,5 +491,14 @@ eq(off.can_read, false, "sem conexão e sem arquivo local, não se lê"); eq(off
 local done = Libview.detail({ id = 6, title = "Z", completed = true, percent = 100, series = "S", seriesIndex = 2.5, files = {} }, nil, true)
 eq(done.lines[1], "S · 2.5", "índice fracionado"); eq(done.lines[2], "Concluído", "concluído"); eq(done.read_text, "Ler", "concluído lê de novo")
 
+-- séries nas grades
+eq(Libview.seriesCount({ volumes = 5 }), "5 volumes", "volumes"); eq(Libview.seriesCount({ chapters = 1 }), "1 capítulo", "um capítulo")
+eq(Libview.seriesCount({ volumes = 2, chapters = 3, oneShots = 1 }), "2 volumes · 3 capítulos · 1 one-shot", "tudo junto"); eq(Libview.seriesCount({}), "", "nada")
+local sc = Libview.workCard({ id = 3, title = "Absolute Batman #5", author = "Scott", coverUrl = "/c/3", percentComplete = 40, fileId = 30,
+    collapsed = { collectionId = 21, name = "Absolute Batman", chapters = 5, coverUrl = "/c/9" } })
+eq(sc.title, "Absolute Batman", "o cartão é o da série"); eq(sc.cover, "/c/9", "com a capa da série"); eq(sc.subtitle, "5 capítulos", "e o que ela tem")
+eq(sc.collection.id, 21, "e a coleção que abre"); eq(sc.percent, 0, "sem o progresso da obra mais nova"); eq(sc.key, "codice:series:21", "chave própria")
+eq(Libview.workCard({ id = 1, title = "X", collapsed = nil }).collection, nil, "obra comum não é série")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

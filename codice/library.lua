@@ -42,7 +42,6 @@ local Store = require("codice/shelfstore")
 
 local PER_PAGE = Libview.PER_PAGE
 local COLS = 3
-local ROWS_PER_PAGE = 7 -- rows of a list in a page
 local COVERS_PER_STEP = 2
 
 local Library = InputContainer:extend{
@@ -141,12 +140,20 @@ function Library:notice(offline)
     return Store.notice() or "Sem conexão: mostrando só o que está no aparelho."
 end
 
+--- How many rows of a list fit the screen: what is left under the header, the notice and the foot (and `extra`, what the screen puts over the
+--- list), at least three. A page that does not fit cannot be read: there is no scrolling.
+function Library:rowsPerPage(extra)
+    local m = self.m
+    local avail = m.h - m.header_h - m.notice_h - m.foot_h - (extra or 0) - m.gap
+    return math.max(3, math.floor(avail / (m.row_h + Screen:scaleBySize(1))))
+end
+
 --- The rows of a page out of all of them: `{ rows, page, pages }`.
-local function pageOfRows(all, page)
-    local pages = math.max(1, math.ceil(#all / ROWS_PER_PAGE))
+local function pageOfRows(all, page, per)
+    local pages = math.max(1, math.ceil(#all / per))
     page = math.min(math.max(1, page), pages)
     local rows = {}
-    for i = (page - 1) * ROWS_PER_PAGE + 1, math.min(#all, page * ROWS_PER_PAGE) do rows[#rows + 1] = all[i] end
+    for i = (page - 1) * per + 1, math.min(#all, page * per) do rows[#rows + 1] = all[i] end
     return rows, page, pages
 end
 
@@ -200,18 +207,38 @@ function Library:modelCategories(view)
             end
         end }
     end
-    local page_rows, page, pages = pageOfRows(rows, view.page or 1)
+    local page_rows, page, pages = pageOfRows(rows, view.page or 1, self:rowsPerPage())
     return { kind = "list", title = view.title or "Categorias", rows = page_rows, page = page, pages = pages,
              notice = self:notice(offline), empty = "Nenhuma categoria." }
 end
 
---- The people who wrote what is in the library, by letter and page.
+--- The people who wrote what is in the library, a letter at a time (the first one there is, until the person picks another) and a page at a
+--- time (as many rows as fit the screen).
 function Library:modelPeople(view)
     local offline = not self:online()
     local letter = view.letter
     local rows, letters, page, pages = {}, {}, view.page or 1, 1
+    local per = self:rowsPerPage(self.letters_h)
+    local function letterList(list)
+        local out = {}
+        for _, l in ipairs(list or {}) do out[#out + 1] = l.letter end
+        return out
+    end
     if not offline then
-        local params = { page = page }
+        if not letter then
+            -- the letters there are first, to open on the first of them
+            local code, data = self:get("/device/people", { limit = 1 })
+            if code == 200 and type(data) == "table" and type(data.letters) == "table" then
+                letters = letterList(data.letters)
+                letter = letters[1]
+                view.letter = letter
+            else
+                offline = true
+            end
+        end
+    end
+    if not offline then
+        local params = { page = page, limit = per }
         if letter then params.letter = letter end
         local code, data = self:get("/device/people", params)
         if code == 200 and type(data) == "table" and type(data.data) == "table" then
@@ -220,31 +247,35 @@ function Library:modelPeople(view)
                     self:push("works", { spec = { person = p.id, title = p.name } })
                 end }
             end
-            for _, l in ipairs(data.letters or {}) do letters[#letters + 1] = l.letter end
+            letters = letterList(data.letters)
             page, pages = data.page or page, data.pages or 1
         else
             offline = true
         end
     end
     if offline then
-        local seen = {}
-        local mine = {}
-        for _, a in ipairs(Shelf.authors(shelf())) do
+        local seen, all = {}, Shelf.authors(shelf())
+        letters = {}
+        for _, a in ipairs(all) do
             local l = Shelf.letter(a.name)
             if not seen[l] then seen[l] = true; letters[#letters + 1] = l end
-            if not letter or l == letter then mine[#mine + 1] = a end
         end
         table.sort(letters, function(a, b)
             if a == "#" then return false end
             if b == "#" then return true end
             return a < b
         end)
-        for _, a in ipairs(mine) do
-            rows[#rows + 1] = { title = a.name, detail = tostring(a.count), go = function()
-                self:push("works", { spec = { author = a.id, title = a.name } })
-            end }
+        letter = view.letter
+        if not letter or not seen[letter] then letter = letters[1]; view.letter = letter end
+        rows = {}
+        for _, a in ipairs(all) do
+            if Shelf.letter(a.name) == letter then
+                rows[#rows + 1] = { title = a.name, detail = tostring(a.count), go = function()
+                    self:push("works", { spec = { author = a.id, title = a.name } })
+                end }
+            end
         end
-        rows, page, pages = pageOfRows(rows, page)
+        rows, page, pages = pageOfRows(rows, page, per)
     end
     return { kind = "list", title = view.title or "Autores", rows = rows, page = page, pages = pages, letters = letters, letter = letter,
              search = false, notice = self:notice(offline), empty = "Nenhum autor." }
@@ -254,7 +285,8 @@ function Library:modelCollections(view)
     local offline = not self:online()
     local rows, page, pages = {}, view.page or 1, 1
     if not offline then
-        local code, data = self:get("/device/collections", { page = page, limit = ROWS_PER_PAGE })
+        local per = self:rowsPerPage()
+        local code, data = self:get("/device/collections", { page = page, limit = per })
         if code == 200 and type(data) == "table" and type(data.data) == "table" then
             for _, c in ipairs(data.data) do
                 rows[#rows + 1] = { title = c.name, detail = tostring(c.workCount or ""), go = function()
@@ -262,7 +294,7 @@ function Library:modelCollections(view)
                 end }
             end
             page = data.page or page
-            pages = data.totalPages or math.max(1, math.ceil((data.total or #rows) / ROWS_PER_PAGE))
+            pages = data.totalPages or math.max(1, math.ceil((data.total or #rows) / per))
         else
             offline = true
         end
@@ -274,7 +306,7 @@ function Library:modelCollections(view)
                 self:push("works", { spec = { series = s.name, title = s.name } })
             end }
         end
-        rows, page, pages = pageOfRows(rows, page)
+        rows, page, pages = pageOfRows(rows, page, self:rowsPerPage())
     end
     return { kind = "list", title = view.title or "Séries e coleções", rows = rows, page = page, pages = pages,
              notice = self:notice(offline), empty = "Nada por aqui." }
@@ -345,7 +377,7 @@ function Library:modelCollection(view)
     local code, data = self:get("/device/collections/" .. tostring(view.id))
     local all = {}
     local offline = not (code == 200 and type(data) == "table")
-    if not offline then all = Libview.markDownloaded(Libview.cardsOf(data.collection and { works = data.collection.works } or data, true), shelf()) end
+    if not offline then all = Libview.markDownloaded(Libview.cardsOf(data, true), shelf()) end
     local pages = math.max(1, math.ceil(#all / PER_PAGE))
     local page = math.min(math.max(1, view.page or 1), pages)
     local cards = {}
@@ -502,7 +534,7 @@ function Library:letters(m, model, top)
     local line_h = Screen:scaleBySize(40)
     local list = model.letters or {}
     local cell_w = math.floor(m.content_w / per_line)
-    local all = { { label = "Todos", letter = nil } }
+    local all = {}
     for _, l in ipairs(list) do all[#all + 1] = { label = l, letter = l } end
     local i = 1
     local y = top
@@ -512,20 +544,20 @@ function Library:letters(m, model, top)
         local n = 0
         while i <= #all and n < per_line do
             local item = all[i]
-            local w = item.letter and cell_w or cell_w * 2
+            local w = cell_w
             local on = (model.letter == item.letter)
             local t = text(item.label, on and 22 or 18, { bold = on })
             line[#line + 1] = FrameContainer:new{ bordersize = on and Screen:scaleBySize(3) or 0, padding = 0, margin = 0,
                 width = w, height = line_h, CenterContainer:new{ dimen = Geom:new{ w = w - 6, h = line_h - 6 }, t } }
             self.hits[#self.hits + 1] = { x = x, y = y, w = w, h = line_h, fn = function() self:setLetter(item.letter) end }
             x = x + w
-            n = n + (item.letter and 1 or 2)
+            n = n + 1
             i = i + 1
         end
         rows[#rows + 1] = line
         y = y + line_h
     end
-    rows.height = y - top
+    self.letters_h = y - top
     return rows, y - top
 end
 
@@ -594,7 +626,7 @@ function Library:cardWidget(m, card, holders)
         progress,
         VerticalSpan:new{ width = Screen:scaleBySize(4) },
         box(m.card_w, Screen:scaleBySize(22), text(mark .. (card.title or "?"), 16, { bold = true, max_width = m.card_w })),
-        box(m.card_w, Screen:scaleBySize(20), text(card.author or "", 14, { gray = true, max_width = m.card_w })),
+        box(m.card_w, Screen:scaleBySize(20), text(card.subtitle or card.author or "", 14, { gray = true, max_width = m.card_w })),
     }
 end
 
@@ -625,7 +657,12 @@ function Library:gridBody(m, model, top, holders, avail)
             if c > 1 then line[#line + 1] = HorizontalSpan:new{ width = m.gap } end
             line[#line + 1] = self:cardWidget(cm, card, holders)
             self.hits[#self.hits + 1] = { x = left + (c - 1) * (card_w + m.gap), y = y, w = card_w, h = line_h - m.gap, fn = function()
-                self:push("detail", { card = card })
+                if card.collection then
+                    -- a series: its volumes and chapters, to choose which to read
+                    self:push("collection", { id = card.collection.id, title = card.collection.name })
+                else
+                    self:push("detail", { card = card })
+                end
             end }
             i = i + 1
         end
@@ -967,6 +1004,7 @@ function Library:init()
         SwipeLibrary = { GestureRange:new{ ges = "swipe", range = self.dimen } },
     }
     self.stack = { { kind = "root", page = 1 } }
+    self.letters_h = 2 * Screen:scaleBySize(40) -- the strip of letters of the authors: two lines, until it is drawn once
     self.hits = {}
     self.plugin.library_open = self
     Store.configure(self.plugin:booksDir())
