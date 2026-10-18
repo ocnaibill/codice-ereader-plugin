@@ -36,6 +36,7 @@ local api = require("codice/http")
 local core = require("codice/core")
 local Coverimg = require("codice/coverimg")
 local Covers = require("codice/covers")
+local Data = require("codice/data")
 local Libview = require("codice/libview")
 local Shelf = require("codice/shelf")
 local Store = require("codice/shelfstore")
@@ -353,7 +354,7 @@ function Library:modelWorks(view)
     local spec = view.spec
     local chip = view.chip or "all"
     local offline = not self:online()
-    local cards, page, pages
+    local cards, page, pages, total
     local local_only = spec.downloaded or chip == "downloaded" or spec.format ~= nil or spec.series ~= nil or spec.author ~= nil
     if not offline and not local_only then
         local params = Libview.worksParams(spec, view.page or 1)
@@ -362,6 +363,7 @@ function Library:modelWorks(view)
         if code == 200 and type(data) == "table" and type(data.data) == "table" then
             cards = Libview.markDownloaded(Libview.cardsOf(data), shelf())
             page, pages = data.page or 1, data.totalPages or 1
+            total = tonumber(data.total)
         else
             offline = true
         end
@@ -369,11 +371,11 @@ function Library:modelWorks(view)
     if not cards then
         local all = shelfList(spec, chip)
         local pg = Shelf.page(all, view.page or 1, PER_PAGE)
-        cards, page, pages = pg.items, pg.page, pg.pages
+        cards, page, pages, total = pg.items, pg.page, pg.pages, pg.total
     end
     local chips
     if not (spec.downloaded or spec.inProgress or spec.favorite) then chips = Libview.CHIPS end
-    return { kind = "grid", title = Libview.listTitle(spec), cards = cards, page = page, pages = pages, chips = chips, chip = chip, search = true, sort = true,
+    return { kind = "grid", title = Libview.listTitle(spec), cards = cards, page = page, pages = pages, total = total, chips = chips, chip = chip, search = true, sort = true,
              notice = self:notice(offline), empty = chip == "downloaded" and "Nenhuma obra no aparelho aqui." or "Nenhuma obra." }
 end
 
@@ -754,7 +756,9 @@ function Library:gridBody(m, model, top, holders, avail)
         return group, y + m.gap * 2 + m.row_h
     end
     local text_h = Screen:scaleBySize(4 + 6 + 4 + 22 + 20)
-    local max_cover_h = math.floor((avail - 3 * m.gap - 2 * text_h) / 2)
+    -- a list of three or fewer is one line: the covers can be as wide as the screen allows; a longer one has two lines on a page, all the same size
+    local lines = (model.total or #model.cards) <= COLS and 1 or 2
+    local max_cover_h = math.floor((avail - (lines + 1) * m.gap - lines * text_h) / lines)
     local card_w = math.min(m.card_w, math.floor(max_cover_h / 1.5))
     local cm = { card_w = card_w, cover_h = math.floor(card_w * 1.5) }
     local line_h = cm.cover_h + text_h + m.gap
@@ -856,7 +860,7 @@ end
 
 --- Opens a chapter or volume of a series: straight away when it has one file, asking which when it has more; fetched first if it is not on the device.
 function Library:openChapter(card)
-    self.plugin:chooseAndOpen(card, function() UIManager:close(self) end)
+    self.plugin:chooseAndOpen(card, self:leaveFor())
 end
 
 --- A list of parts of a long series to jump to: "Cap. 1 – Cap. 9", "Cap. 10 – Cap. 18"... as many buttons as fit a dialog.
@@ -927,7 +931,7 @@ function Library:seriesBody(m, model, top, holders)
         line[#line + 1] = counter
         self.hits[#self.hits + 1] = { x = 0, y = y, w = m.w, h = head_h, fn = function() self:askJump(model) end }
     end
-    group[#group + 1] = CenterContainer:new{ dimen = Geom:new{ w = m.w, h = head_h }, line }
+    group[#group + 1] = box(m.w, head_h, line) -- at the left (a CenterContainer would put the heading in the middle when it has no counter)
     group[#group + 1] = rule(m.w)
     y = y + head_h + Screen:scaleBySize(1)
     if #model.rows == 0 then
@@ -1195,10 +1199,25 @@ function Library:readBest(d)
     self:openFile(d, f)
 end
 
+--- What runs just before a book opens from here: the screens of the stack are kept (data only), so that closing the book brings the person back to
+--- the same place, and this one is closed.
+function Library:leaveFor()
+    return function()
+        local copy = {}
+        for i, view in ipairs(self.stack) do
+            local c = {}
+            for k, v in pairs(view) do c[k] = v end
+            copy[i] = c
+        end
+        Data.return_to = { action_id = self.action_id, stack = copy }
+        UIManager:close(self)
+    end
+end
+
 function Library:openFile(d, f)
     local card = core.withFile(d.card, { id = f.id, format = f.format })
     card.title = d.title or card.title
-    self.plugin:openBook(card, function() UIManager:close(self) end)
+    self.plugin:openBook(card, self:leaveFor())
 end
 
 function Library:confirmRemove(d)
@@ -1242,7 +1261,7 @@ function Library:init()
     -- the container the screens are drawn into; the bar of tabs (when there is one) is put around it
     self.content = FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = 0, padding = 0, margin = 0, VerticalSpan:new{ width = 0 } }
     self[1] = self.content
-    self.stack = { self.start or { kind = "root", page = 1 } }
+    self.stack = self.restore or { self.start or { kind = "root", page = 1 } }
     self.letters_h = 2 * Screen:scaleBySize(40) -- the strip of letters of the authors: two lines, until it is drawn once
     self.hits = {}
     self.plugin.library_open = self

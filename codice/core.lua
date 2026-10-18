@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.13.0"
+M.PLUGIN_VERSION = "0.14.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -544,6 +544,31 @@ function M.placeQuestion(here, remote, web, device_name, now)
         go_text = (forward and "Avançar" or "Voltar") .. " para " .. there_n .. "% (" .. (who == "Na web" and "web" or who:gsub("^No ", "")) .. ")",
         stay_text = "Permanecer em " .. here_n .. "% (aqui)",
     }
+end
+
+-- ---------------------------------------------------------------- the lock screen
+
+--- The books (cards) that have a cover to show, at most `max`, in the order they come: `has_cover(card)` says.
+function M.lockscreenCovers(cards, has_cover, max)
+    local out = {}
+    for _, card in ipairs(cards or {}) do
+        if #out >= (max or 12) then break end
+        if has_cover(card) then out[#out + 1] = card end
+    end
+    return out
+end
+
+--- What the images were made from: the books and the size of the screen. When it is the same, they are not made again.
+function M.lockscreenSignature(cards, w, h)
+    local ids = {}
+    for _, c in ipairs(cards) do ids[#ids + 1] = tostring(c.id) end
+    -- (the 2: the look of the images; a change of it makes them again)
+    return "2:" .. w .. "x" .. h .. ":" .. table.concat(ids, ",")
+end
+
+--- The notice after the plugin was updated: "Códice atualizado neste Kindle para a versão 0.14.0".
+function M.updatedNotice(version, is_kindle)
+    return "Códice atualizado neste " .. (is_kindle and "Kindle" or "leitor") .. " para a versão " .. tostring(version) .. "."
 end
 
 -- ---------------------------------------------------------------- files

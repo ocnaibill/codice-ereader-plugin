@@ -126,6 +126,8 @@ stub("ui/network/manager", { isOnline = function() return online end })
 stub("infra/sui_core", { makeColoredText = function(spec) return Tw:new(spec) end, CLR_TEXT_SUB = 3 })
 stub("ui/renderimage", { renderImageFile = function() return nil end })
 stub("ltn12", { sink = { file = function() end } })
+stub("luasettings", { open = function() return { readSetting = function() return nil end } end })
+stub("socket", { gettime = function() return os.time() end })
 
 -- the network: canned answers
 local calls = {}
@@ -161,7 +163,7 @@ local plugin = {
     say = function(_, t) said[#said + 1] = t end,
     booksDir = function() return "/tmp/codice-stub-data/books" end,
     openBook = function(_, card) opened[#opened + 1] = card end,
-    chooseAndOpen = function(_, card) opened[#opened + 1] = card end,
+    chooseAndOpen = function(_, card, before) if before then before() end opened[#opened + 1] = card end,
 }
 os.execute("mkdir -p /tmp/codice-stub-data/books")
 
@@ -379,6 +381,20 @@ check(libl.model.page > 1 and libl.model.rows[1].label ~= "Cap. 1", "ir para a s
 local last = libl
 for _ = 1, 50 do last:turn(1) end
 check(last.model.page == last.model.pages and last.model.rows[#last.model.rows].label == "Cap. 60", "a última página termina no último capítulo")
+
+-- opening a book from the library keeps where the person was, to come back to it
+local Data = require("codice/data")
+Data.return_to = nil
+local libb = open()
+libb:push("series", { id = 77, title = "Mangá longo" })
+libb:openChapter({ id = 301, title = "Mangá #1", fileCount = 2 })
+check(Data.return_to ~= nil and #Data.return_to.stack == 2 and Data.return_to.stack[2].kind == "series", "ao abrir um capítulo, a biblioteca guarda onde estava")
+local back = Library:new{ plugin = plugin, restore = Data.return_to.stack, action_id = Data.return_to.action_id }
+check(back.model.kind == "series" and #back.stack == 2, "e volta para a mesma página da série")
+-- a list of three or fewer is one line: bigger covers
+answers["/device/works"] = { data = { data = { { id = 1, title = "Duna", author = "F", coverUrl = "/c/1", percentComplete = 42, fileId = 10, format = "epub", fileCount = 1 } }, total = 1, page = 1, totalPages = 1 } }
+local few = Library:new{ plugin = plugin, start = { kind = "works", spec = { favorite = true, title = "Favoritos" }, page = 1 }, action_id = "codice_favorites" }
+check(few.model.total == 1, "o total da lista vai no modelo")
 
 print(string.format("%d verificações da biblioteca, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

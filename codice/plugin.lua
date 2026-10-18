@@ -321,7 +321,7 @@ end
 
 --- Opens a screen of the library (DEC-198): the root, or what a tab of the bar opens (`action_id`: codice_reading, codice_favorites, codice_notes).
 --- With the bar of the Simple UI around it, the tab is lit.
-function Codice:openLibrary(action_id)
+function Codice:openLibrary(action_id, restore)
     if not self:connection() then
         return self:say("Conecte este leitor a um Códice primeiro: Códice → Conectar.")
     end
@@ -336,7 +336,7 @@ function Codice:openLibrary(action_id)
         end
     end
     guarded("abrir a biblioteca", function()
-        UIManager:show(require("codice/library"):new{ plugin = self, start = start, action_id = action_id })
+        UIManager:show(require("codice/library"):new{ plugin = self, start = start, action_id = action_id, restore = restore })
     end)()
 end
 
@@ -488,6 +488,16 @@ end
 function Codice:onCloseDocument()
     -- what was left to send of the notes goes now, while the book is still open (it needs the document)
     require("codice/annotations").run(self, self.ui, false)
+    -- a book that was opened from the library is being closed: the library comes back where it was, once the file manager (or the home) is up
+    if Data.return_to then
+        UIManager:scheduleIn(2.5, function()
+            local back = Data.return_to
+            if not back then return end
+            Data.return_to = nil
+            local ok, err = pcall(function() ((package.loaded["codice/plugin"] or {}).live or self):openLibrary(back.action_id, back.stack) end)
+            if not ok then logger.warn("codice: going back to the library failed:", err) end
+        end)
+    end
     local ok, err = pcall(function()
         local doc = self.ui.document
         local path = doc and doc.file
@@ -568,6 +578,17 @@ function Codice:addToMainMenu(menu_items)
             {
                 text = "Montar a home do Códice",
                 callback = function() self:applyHomePreset() end,
+            },
+            {
+                text_func = function()
+                    return require("codice/lockscreen").enabled(self) and "Tela de bloqueio com as capas: sim" or "Tela de bloqueio com as capas: não"
+                end,
+                keep_menu_open = true,
+                callback = function(touchmenu_instance)
+                    local Lockscreen = require("codice/lockscreen")
+                    Lockscreen.set(self, not Lockscreen.enabled(self))
+                    if touchmenu_instance then touchmenu_instance:updateItems() end
+                end,
             },
             { text = "Procurar atualização do plugin", callback = function() self:checkUpdate(false) end },
             {

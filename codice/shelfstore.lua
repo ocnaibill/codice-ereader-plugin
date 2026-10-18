@@ -49,6 +49,8 @@ end
 
 function Store.save()
     if not index then return end
+    -- the lock screen shows the covers of what is on the device: it is made again when this changes
+    pcall(function() require("codice/lockscreen").schedule() end)
     local f = io.open(file(), "wb")
     if f then
         f:write(api.encode(index))
