@@ -61,7 +61,7 @@ function Plain.make(spec)
         is_book_mod = true,
     }
     function mod.build(w, ctx)
-        local home = Data.load()
+        local home = Data.load() or {} -- none yet (the first time, before the first answer of the server): the modules draw what they can
         -- later, so that the build that asked is not held up: what is new comes after the screen is there
         UIManager:scheduleIn(0.3, function() Data.refresh(Row.redraw) end)
         -- a failure here is logged and leaves the space empty: it must not take the whole home with it
