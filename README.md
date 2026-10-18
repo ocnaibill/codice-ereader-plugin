@@ -30,7 +30,7 @@ Tocar numa capa abre o livro: **Ler**/**Continuar**. Se a obra tem mais de um ar
 
 ## Atualizar o plugin
 
-**Códice → Procurar atualização do plugin** (e, quando o Wi-Fi volta, no máximo uma vez por semana, um aviso) olha a versão mais nova nos [releases](https://github.com/ocnaibill/codice-ereader-plugin/releases), baixa o zip, confere o SHA-256 publicado e a sintaxe de cada arquivo, coloca a versão nova guardando a atual em `codice.koplugin.old` e pede para reiniciar. **Voltar à versão anterior do plugin** desfaz. O código baixado é executado pelo KOReader: a confiança é a do dono do repositório e do HTTPS, a mesma do OTA do KOReader.
+**Códice → Procurar atualização do plugin** (e, quando o Wi-Fi volta, no máximo uma vez por semana, um aviso) olha a versão mais nova nos [releases](https://github.com/ocnaibill/codice-ereader-plugin/releases), baixa o zip, confere o SHA-256 publicado e a sintaxe de cada arquivo, coloca a versão nova guardando a atual em `codice.koplugin.old` e pede para reiniciar. **Voltar à versão anterior do plugin** desfaz. Desde a 0.3.1 o zip pode ter pastas (cada caminho é conferido: só nomes simples, até 6 níveis, nunca `..`), e cada arquivo `.lua` de qualquer pasta tem de carregar antes de a versão nova ser posta no lugar. O código baixado é executado pelo KOReader: a confiança é a do dono do repositório e do HTTPS, a mesma do OTA do KOReader.
 
 Para publicar uma versão: suba `PLUGIN_VERSION` em `codice_core.lua` e crie a tag `vX.Y.Z`; o workflow `release` confere, empacota e cria o release com o zip e o hash.
 

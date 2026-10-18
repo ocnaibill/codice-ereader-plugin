@@ -154,5 +154,15 @@ eq(choices[2].label, "Inglês - EPUB  (lido)", "lido")
 eq(choices[3].label, "Inglês - PDF  (último acessado, 20%)", "último acessado, com quanto foi lido")
 eq(#core.fileChoices(nil), 0, "sem arquivos")
 
+-- caminhos dentro do zip
+eq(core.safeRelPath("main.lua"), "main.lua", "arquivo na raiz")
+eq(core.safeRelPath("infra/sui_core.lua"), "infra/sui_core.lua", "arquivo numa pasta")
+eq(core.safeRelPath("a/b/c/d/e/f.lua"), "a/b/c/d/e/f.lua", "seis níveis")
+eq(core.safeRelPath("a/b/c/d/e/f/g.lua"), nil, "sete níveis")
+for _, bad in ipairs({ "", "/etc/passwd", "../fora.lua", "a/../../b.lua", "a/./b.lua", "a//b.lua", "a\\b.lua", "a/b\0c.lua", "a/", string.rep("x", 201) }) do
+    eq(core.safeRelPath(bad), nil, "caminho recusado: " .. bad:gsub("%c", "?"):sub(1, 20))
+end
+eq(core.safeRelPath(nil), nil, "sem caminho")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)
