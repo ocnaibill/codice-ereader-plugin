@@ -2,7 +2,7 @@
 The rows of works of the Simple UI home, from the Códice: "Continuar lendo", "Favoritos" and the shelves by category. Each row is a module made
 over the `GridRenderer.makeModule` of the Simple UI, as the Collections one is: every cell is a work of the server, not a file of the device.
 
-This file is the factory: `Row.make{ id, name, label, items, caption }` gives a module, where `items(home, max)` picks the cards of the row from the last
+This file is the factory: `Row.make{ id, name, label, items, caption, caption_lines }` gives a module, where `items(home, max)` picks the cards of the row from the last
 home the server sent (`codice/core.lua` has the pure part). That home is kept in a file (`codice/data.lua`): the screen appears at once, with no
 network, and updates itself when a new one arrives. The covers come after the screen, a few at a time. Tapping a work opens it (downloading the
 file if it is not on the device yet, and asking which when there is more than one).
@@ -89,18 +89,19 @@ end
 -- the cell
 -- ---------------------------------------------------------------------------
 
-local function dims(cw, caption)
+local function dims(cw, caption_lines)
     local pad = Screen:scaleBySize(4)
     local w = math.max(10, cw - 2 * pad)
     local h = math.floor(w * 1.5)
     local face = Font:getFace(SUIStyle.FACE_REGULAR, SUIStyle.FS_DETAIL)
+    local bold_face = Font:getFace(SUIStyle.FACE_BOLD, SUIStyle.FS_DETAIL)
     local text_h = TextWidget:new{ text = "Ag", face = face }:getSize().h
     local bar_h = Screen:scaleBySize(5)
     local gap = Screen:scaleBySize(4)
-    if caption then
-        -- only the cover and, under it, how much is read
-        return { pad = pad, cover_w = w, cover_h = h, face = face, text_h = text_h, bar_h = 0, gap = gap,
-                 cell_h = h + gap + text_h + gap }
+    if caption_lines then
+        -- only the cover and, under it, the lines of the caption (the title, the author, how much is read)
+        return { pad = pad, cover_w = w, cover_h = h, face = face, bold_face = bold_face, text_h = text_h, bar_h = 0, gap = gap,
+                 cell_h = h + gap + caption_lines * text_h + gap }
     end
     return { pad = pad, cover_w = w, cover_h = h, face = face, text_h = text_h, bar_h = bar_h, gap = gap,
              cell_h = h + gap + bar_h + gap + text_h + gap }
@@ -163,22 +164,28 @@ local function coverWidget(d, card)
         TextWidget:new{ text = tostring(card.title or "?"), face = d.face, max_width = d.cover_w - 4 } }
 end
 
-local function renderCell(by_key, caption, key, cw, cell_h)
+local function renderCell(by_key, spec, key, cw, cell_h)
     local card = by_key[key]
     if not card then return VerticalSpan:new{ width = cell_h } end
-    local d = dims(cw, caption)
+    local d = dims(cw, spec.caption and spec.caption_lines)
     local content
-    if caption then
+    if spec.caption then
         content = VerticalGroup:new{
             align = "center",
             VerticalSpan:new{ width = 0 },
             coverWidget(d, card),
             VerticalSpan:new{ width = d.gap },
-            UI.makeColoredText{
-                text = caption(card), face = d.face, fgcolor = UI.CLR_TEXT_SUB,
-                max_width = d.cover_w, truncate_with_ellipsis = true, alignment = "center",
-            },
         }
+        local lines = spec.caption(card)
+        for i = 1, spec.caption_lines do
+            local line = lines[i] or {}
+            -- every line takes its place, empty or not, so that the covers of a row line up
+            content[#content + 1] = UI.makeColoredText{
+                text = tostring(line.text or ""), face = line.bold and d.bold_face or d.face,
+                fgcolor = line.sub and UI.CLR_TEXT_SUB or nil,
+                max_width = d.cover_w, truncate_with_ellipsis = true, alignment = "center",
+            }
+        end
     else
         local bar
         if (card.percent or 0) > 0 then
@@ -257,8 +264,8 @@ function Row.make(spec)
         paged       = false,
 
         getFileList   = listBooks,
-        renderCell    = function(key, cw, cell_h) return renderCell(by_key, spec.caption, key, cw, cell_h) end,
-        getCellHeight = function(cw) return dims(cw, spec.caption).cell_h end,
+        renderCell    = function(key, cw, cell_h) return renderCell(by_key, spec, key, cw, cell_h) end,
+        getCellHeight = function(cw) return dims(cw, spec.caption and spec.caption_lines).cell_h end,
 
         -- the progress is drawn by the cell itself
         progress_style = { locked = "none" },

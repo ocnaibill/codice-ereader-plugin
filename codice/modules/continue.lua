@@ -9,6 +9,13 @@ return require("codice/modules/row").make{
     name  = "Códice: Continuar lendo",
     label = "Continuar lendo",
     items = function(home, max) return core.homeItems(home, "continue", max) end,
-    -- the cover and, under it, how much is read: no bar, no title (the cover says which book it is)
-    caption = function(card) return core.readLabel(card.percent) end,
+    -- the cover and, under it, one below the other: the title, the author and how much is read
+    caption_lines = 3,
+    caption = function(card)
+        return {
+            { text = card.title or "?", bold = true },
+            { text = card.author or "", sub = true },
+            { text = core.readLabel(card.percent), sub = true },
+        }
+    end,
 }
