@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.3.0"
+M.PLUGIN_VERSION = "0.3.1"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
@@ -235,6 +235,20 @@ end
 --- The name a cover is kept under: its path, as letters and digits.
 function M.coverCacheName(path)
     return (tostring(path or ""):gsub("^/", ""):gsub("[^%w]+", "_")) .. ".jpg"
+end
+
+--- A path inside the plugin as a zip says it ("infra/sui_core.lua"), if it is safe to write under the folder of the plugin: relative, with
+--- plain names only (no "..", no ".", no empty step, no backslash or control character), not too long and not too deep. Nil otherwise.
+function M.safeRelPath(name)
+    if type(name) ~= "string" or name == "" or #name > 200 then return nil end
+    if name:find("[%c\\]") or name:sub(1, 1) == "/" then return nil end
+    local depth = 0
+    for step in (name .. "/"):gmatch("([^/]*)/") do
+        if step == "" or step == "." or step == ".." then return nil end
+        depth = depth + 1
+    end
+    if depth > 6 then return nil end
+    return name
 end
 
 -- ---------------------------------------------------------------- updates (OTA)

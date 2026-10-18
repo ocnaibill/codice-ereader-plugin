@@ -38,6 +38,35 @@ local function rmdir(path)
     lfs.rmdir(path)
 end
 
+local MAX_FILES = 3000 -- an update with more files than this is not this plugin
+
+--- Makes a folder and the ones above it that are missing.
+local function mkdirp(path)
+    local built = path:sub(1, 1) == "/" and "" or nil
+    for step in path:gmatch("[^/]+") do
+        built = built and (built .. "/" .. step) or step
+        if lfs.attributes(built, "mode") ~= "directory" then lfs.mkdir(built) end
+    end
+end
+
+--- The first Lua file under `dir` (a path relative to it) that does not load, or nil when all of them do.
+local function firstBrokenLua(root, rel)
+    local dir = rel == "" and root or (root .. "/" .. rel)
+    for name in lfs.dir(dir) do
+        if name ~= "." and name ~= ".." then
+            local path = rel == "" and name or (rel .. "/" .. name)
+            local mode = lfs.attributes(root .. "/" .. path, "mode")
+            if mode == "directory" then
+                local bad = firstBrokenLua(root, path)
+                if bad then return bad end
+            elseif mode == "file" and name:match("%.lua$") then
+                if not loadfile(root .. "/" .. path) then return path end
+            end
+        end
+    end
+    return nil
+end
+
 local function readAll(path)
     local f = io.open(path, "rb")
     if not f then return nil end
@@ -155,12 +184,14 @@ function Update.install(plugin, pick)
         local files = 0
         for entry in arc:iterate() do
             if entry.mode == "file" and entry.path:sub(1, #PREFIX) == PREFIX then
-                local name = entry.path:sub(#PREFIX + 1)
-                if name:find("..", 1, true) or name:find("/", 1, true) then
+                local name = core.safeRelPath(entry.path:sub(#PREFIX + 1))
+                if not name or files >= MAX_FILES then
                     arc:close()
                     return fail(new, "o arquivo tem um caminho que não esperávamos.")
                 end
-                if not arc:extractToPath(entry.path, new .. "/" .. name) then
+                local dest = new .. "/" .. name
+                mkdirp(dest:match("^(.*)/[^/]+$"))
+                if not arc:extractToPath(entry.path, dest) then
                     arc:close()
                     return fail(new, "não consegui extrair " .. name .. ".")
                 end
@@ -170,18 +201,14 @@ function Update.install(plugin, pick)
         arc:close()
         os.remove(zip)
 
-        -- 3. what was extracted is a plugin: the files are there and every one of them loads
+        -- 3. what was extracted is a plugin: the files are there and every Lua file of it, in any folder, loads
         if files == 0 or lfs.attributes(new .. "/main.lua", "mode") ~= "file" or lfs.attributes(new .. "/_meta.lua", "mode") ~= "file" then
             return fail(new, "o arquivo não traz o plugin completo.")
         end
-        for name in lfs.dir(new) do
-            if name:match("%.lua$") then
-                local chunk, err = loadfile(new .. "/" .. name)
-                if not chunk then
-                    logger.warn("codice: the update has a file that does not load:", name, err)
-                    return fail(new, name .. " não é um arquivo válido.")
-                end
-            end
+        local bad = firstBrokenLua(new, "")
+        if bad then
+            logger.warn("codice: the update has a file that does not load:", bad)
+            return fail(new, bad .. " não é um arquivo válido.")
         end
 
         -- 4. in place, keeping the previous one
