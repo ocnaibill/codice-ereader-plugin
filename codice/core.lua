@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.4.1"
+M.PLUGIN_VERSION = "0.4.2"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
@@ -201,6 +201,20 @@ function M.sameRows(a, b)
         return table.concat(parts, "\n")
     end
     return sig(a) == sig(b)
+end
+
+--- The folder of the plugin, from the path of one of its files in the `codice/` folder (what `debug.getinfo(1, "S").source` says: "@" and the
+--- path, absolute or relative to where KOReader runs). Nil when the path is not one of those. A relative path is made absolute with `cwd`.
+function M.pluginDirFromSource(source, cwd)
+    if type(source) ~= "string" or source:sub(1, 1) ~= "@" then return nil end
+    local dir = source:sub(2):match("^(.*)/codice/[^/]+%.lua$")
+    if not dir or dir == "" then return nil end
+    dir = dir:gsub("^%./", "")
+    if dir:sub(1, 1) ~= "/" and type(cwd) == "string" and cwd ~= "" then
+        local base = cwd:gsub("/+$", "")
+        dir = dir == "." and base or (base .. "/" .. dir)
+    end
+    return dir
 end
 
 -- ---------------------------------------------------------------- files
