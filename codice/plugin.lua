@@ -453,6 +453,10 @@ function Codice:addToMainMenu(menu_items)
                 enabled_func = function() return self:connection() ~= nil end,
                 callback = function() self:disconnect() end,
             },
+            {
+                text = "Montar a home do Códice",
+                callback = function() self:applyHomePreset() end,
+            },
             { text = "Procurar atualização do plugin", callback = function() self:checkUpdate(false) end },
             {
                 text = "Voltar à versão anterior do plugin",
@@ -462,6 +466,29 @@ function Codice:addToMainMenu(menu_items)
             { text = "Diagnóstico (protótipo)", sub_item_table = Diag.menu(self) },
         },
     }
+end
+
+--- Puts the ready-made home in the place of the one of the Simple UI (after asking: it replaces the layout of the home, and what was there is lost
+--- unless the person saved it as a preset of the Simple UI).
+function Codice:applyHomePreset()
+    UIManager:show(ConfirmBox:new{
+        text = "Montar a home do Códice?\n\nIsso troca os módulos da home do Simple UI por: saudação, números, continuar lendo, favoritos, uma nota e prateleiras, em três páginas.\n\nPara guardar a home atual, salve-a antes como predefinição no Simple UI.",
+        ok_text = "Montar",
+        ok_callback = guarded("montar a home", function()
+            local Presets = require("features/sui_presets")
+            local ok = require("infra/sui_core").applyPresetWithNotice(function()
+                local applied = Presets.applyBuiltin(core.PRESET_ID)
+                if applied then require("infra/sui_store"):set("simpleui_hs_active_preset", core.PRESET_ID) end
+                return applied
+            end, function()
+                local HS = package.loaded["screens/sui_homescreen"]
+                if HS and HS.rebuildLayout then HS.rebuildLayout() end
+                local SE = package.loaded["engines/sui_screen_engine"]
+                if SE and SE.refreshAllLiveImmediate then SE.refreshAllLiveImmediate(true) end
+            end)
+            if not ok then self:say("Não consegui montar a home.") end
+        end),
+    })
 end
 
 --- The network came back: the configuration is asked again, quietly, if it has been a while.
@@ -539,7 +566,18 @@ function M.install(ui)
             local Registry = require("modules/moduleregistry")
             Registry.register("codice/modules/continue")
             Registry.register("codice/modules/favorites")
+            Registry.register("codice/modules/greeting")
+            Registry.register("codice/modules/stats")
+            Registry.register("codice/modules/note")
             for n = 1, core.SHELF_SLOTS do Registry.register("codice/modules/shelf" .. n) end
+        end)
+        -- the ready-made home, among the presets of the Simple UI (it hands out its list of built-in presets; no file of its own is changed)
+        pcall(function()
+            local list = require("features/sui_presets").getBuiltinPresets()
+            for _, p in ipairs(list) do
+                if p.id == core.PRESET_ID then return end
+            end
+            list[#list + 1] = core.homePreset()
         end)
     end
     return instance

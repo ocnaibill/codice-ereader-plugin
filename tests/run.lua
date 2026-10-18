@@ -175,7 +175,8 @@ eq(#core.homeItems({ continue = {} }, "favorites", 5), 0, "linha que não existe
 eq(#core.homeItems({ continue = { { id = 1 }, { id = 2 }, { id = 3 } } }, "continue"), 3, "padrão 5")
 local a = { continue = { { id = 1, title = "A", percent = 10, cover = "/c/1" } }, user = { name = "Ana" } }
 local b = { continue = { { id = 1, title = "A", percent = 10, cover = "/c/1" } }, user = { name = "Outra" } }
-eq(core.sameRows(a, b), true, "o nome não conta")
+eq(core.sameRows(a, b), false, "o nome conta: a saudação o mostra")
+eq(core.sameRows(a, a), true, "a mesma home")
 b.continue[1].percent = 11
 eq(core.sameRows(a, b), false, "o progresso conta")
 eq(core.sameRows(nil, nil), true, "duas homes vazias")
@@ -239,6 +240,75 @@ h2.shelves[1].works[1].title = "B"
 eq(core.sameRows(h1, h2), false, "uma obra mudou numa prateleira")
 h2.shelves[1].works[1].title = "A"; h2.shelves[1].total = 5
 eq(core.sameRows(h1, h2), false, "o total da prateleira mudou")
+
+-- a primeira tela, como a web diz
+eq(core.dateLabel({ day = 18, month = 10, year = 2026 }), "18 de outubro de 2026", "data por extenso")
+eq(core.timeLabel({ hour = 9, min = 11 }), "09:11", "hora com zero à esquerda")
+eq(core.greeting(9, "binaco"), "Bom dia, binaco :)", "de manhã")
+eq(core.greeting(12, "ana"), "Boa tarde, ana :)", "ao meio-dia já é tarde")
+eq(core.greeting(18, "ana"), "Boa noite, ana :)", "às 18h é noite")
+eq(core.greeting(5, ""), "Bom dia", "sem nome")
+eq(core.greeting(5, nil), "Bom dia", "sem nome (nil)")
+eq(core.formatCount(0), "0", "zero")
+eq(core.formatCount(13), "13", "pequeno")
+eq(core.formatCount(1420), "1.420", "milhar")
+eq(core.formatCount(1234567), "1.234.567", "milhões")
+eq(core.formatCount(nil), "0", "sem número")
+eq(core.formatBreakdown({ livros = 11, quadrinhos = 2, mangas = 0, audio = 0 }), "11 livros • 2 quadrinhos", "zeros ficam de fora")
+eq(core.formatBreakdown({ livros = 1, quadrinhos = 1, mangas = 1, audio = 1 }), "1 livro • 1 quadrinho • 1 mangá • 1 áudio", "singular")
+eq(core.formatBreakdown({}), "", "nada")
+eq(core.formatBreakdown(nil), "", "sem tabela")
+eq(core.formatReadingTime(11700), "3h 15min", "horas e minutos")
+eq(core.formatReadingTime(2700), "45min", "só minutos")
+eq(core.formatReadingTime(7200), "2h", "horas cheias")
+eq(core.formatReadingTime(0), "0min", "nada")
+local cards = core.statsCards({ stats = { inProgressCount = 13, inProgressBreakdown = { livros = 11, quadrinhos = 2 },
+    completedThisMonth = 3, completedBreakdown = { livros = 2, mangas = 1 }, totalReadingSeconds = 11700 } })
+eq(cards.reading.count, "13", "em andamento")
+eq(cards.reading.detail, "11 livros • 2 quadrinhos", "em andamento por formato")
+eq(cards.activity.completed, "3", "completas no mês")
+eq(cards.activity.time, "3h 15min", "tempo de leitura")
+eq(cards.activity.detail, "2 livros • 1 mangá", "completas por formato")
+eq(core.statsCards({}), nil, "sem números")
+eq(core.statsCards(nil), nil, "sem home")
+local noteHome = { notes = { { text = "primeira", title = "A" }, { text = "  " }, { text = "segunda", title = "B" } } }
+eq(core.pickNote(noteHome, 0).text, "primeira", "a primeira")
+eq(core.pickNote(noteHome, 1).text, "segunda", "pula a vazia")
+eq(core.pickNote(noteHome, 2).text, "primeira", "dá a volta")
+eq(core.pickNote({ notes = {} }, 3), nil, "sem notas")
+eq(core.pickNote(nil, 3), nil, "sem home")
+eq(core.noteSignature(noteHome), "primeira\n  \nsegunda", "assinatura das notas")
+eq(core.noteSignature(nil), "", "sem home")
+local nh2 = { notes = { { text = "outra" } } }
+eq(core.sameRows(noteHome, nh2), false, "as notas mudaram")
+eq(core.sameRows({ stats = { inProgressCount = 1 } }, { stats = { inProgressCount = 2 } }), false, "os números mudaram")
+eq(core.sameRows({ user = { name = "a" } }, { user = { name = "a" } }), true, "mesmo nome")
+
+-- a home pronta
+local preset = core.homePreset()
+eq(preset.id, core.PRESET_ID, "id da predefinição")
+eq(#preset.layout.pages, 3, "três páginas")
+local seen, dup = {}, false
+for _, page in ipairs(preset.layout.pages) do
+    for _, id in ipairs(page.modules) do
+        if seen[id] then dup = true end
+        seen[id] = true
+    end
+end
+eq(dup, false, "nenhum módulo repetido")
+for _, id in ipairs({ "codice_greeting", "codice_stats", "codice_continue", "codice_favorites", "codice_note", "codice_shelf1", "codice_shelf2", "codice_shelf3" }) do
+    eq(seen[id], true, "a predefinição tem " .. id)
+end
+-- every module of the preset exists as a file, with that id
+for id in pairs(seen) do
+    local f = io.open("codice/modules/" .. id:gsub("^codice_", "") .. ".lua")
+    eq(f ~= nil, true, "o arquivo do módulo " .. id)
+    if f then
+        local text = f:read("*a")
+        f:close()
+        eq(text:find('id%s*=%s*"' .. id .. '"') ~= nil, true, "o módulo " .. id .. " tem esse id")
+    end
+end
 
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

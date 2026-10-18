@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.5.0"
+M.PLUGIN_VERSION = "0.6.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -202,6 +202,15 @@ function M.sameRows(a, b)
                 parts[#parts + 1] = table.concat({ row, tostring(c.id), tostring(c.title), tostring(c.percent), tostring(c.cover), tostring(c.fileId) }, "|")
             end
         end
+        local st = type(home) == "table" and home.stats
+        if type(st) == "table" then
+            parts[#parts + 1] = table.concat({ "stats", tostring(st.inProgressCount), M.formatBreakdown(st.inProgressBreakdown), tostring(st.completedThisMonth),
+                M.formatBreakdown(st.completedBreakdown), tostring(st.totalReadingSeconds) }, "|")
+        end
+        parts[#parts + 1] = "user|" .. tostring(type(home) == "table" and type(home.user) == "table" and home.user.name)
+        for _, note in ipairs(type(home) == "table" and type(home.notes) == "table" and home.notes or {}) do
+            parts[#parts + 1] = "note|" .. tostring(note.text) .. "|" .. tostring(note.title)
+        end
         for n, shelf in ipairs(type(home) == "table" and type(home.shelves) == "table" and home.shelves or {}) do
             parts[#parts + 1] = "shelf|" .. n .. "|" .. tostring(shelf.id) .. "|" .. tostring(shelf.title) .. "|" .. tostring(shelf.total)
             for _, c in ipairs(type(shelf.works) == "table" and shelf.works or {}) do
@@ -263,6 +272,120 @@ function M.shelfLabel(home, n)
     local shown = type(shelf.works) == "table" and #shelf.works or 0
     if tonumber(shelf.total) and shelf.total > shown then return shelf.title .. " (" .. shelf.total .. ")" end
     return shelf.title
+end
+
+-- ---------------------------------------------------------------- the first screen, as the web says it
+
+local MONTHS = { "janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro" }
+
+--- "18 de outubro de 2026" from a date table (what `os.date("*t")` gives).
+function M.dateLabel(t)
+    return string.format("%d de %s de %d", t.day, MONTHS[t.month] or "?", t.year)
+end
+
+--- "09:11".
+function M.timeLabel(t)
+    return string.format("%02d:%02d", t.hour, t.min)
+end
+
+--- "Bom dia, ana :)" (no name: "Bom dia"). The smiley is the web's.
+function M.greeting(hour, name)
+    local word = hour < 12 and "Bom dia" or (hour < 18 and "Boa tarde" or "Boa noite")
+    name = trim(name)
+    if name == "" then return word end
+    return word .. ", " .. name .. " :)"
+end
+
+--- A count as the web writes it in pt-BR: 1.420.
+function M.formatCount(n)
+    n = math.floor(tonumber(n) or 0)
+    local s = tostring(math.abs(n))
+    s = s:reverse():gsub("(%d%d%d)", "%1."):reverse():gsub("^%.", "")
+    return (n < 0 and "-" or "") .. s
+end
+
+local KINDS = {
+    { "livros", "livro", "livros" },
+    { "quadrinhos", "quadrinho", "quadrinhos" },
+    { "mangas", "mangá", "mangás" },
+    { "audio", "áudio", "áudios" },
+}
+
+--- "11 livros • 2 quadrinhos" from { livros = 11, quadrinhos = 2, ... }; the kinds that are zero are left out.
+function M.formatBreakdown(b)
+    local out = {}
+    if type(b) == "table" then
+        for _, kind in ipairs(KINDS) do
+            local n = tonumber(b[kind[1]]) or 0
+            if n > 0 then out[#out + 1] = n .. " " .. (n == 1 and kind[2] or kind[3]) end
+        end
+    end
+    return table.concat(out, " • ")
+end
+
+--- "3h 15min", "45min", "2h", "0min".
+function M.formatReadingTime(seconds)
+    seconds = tonumber(seconds) or 0
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    if h == 0 then return m .. "min" end
+    if m == 0 then return h .. "h" end
+    return h .. "h " .. m .. "min"
+end
+
+--- The two numbers cards of the home ("Em andamento" and "Sua atividade") from the home of the server, or nil when it carries no numbers.
+function M.statsCards(home)
+    local st = type(home) == "table" and home.stats or nil
+    if type(st) ~= "table" then return nil end
+    return {
+        reading = {
+            count = M.formatCount(st.inProgressCount),
+            detail = M.formatBreakdown(st.inProgressBreakdown),
+        },
+        activity = {
+            completed = M.formatCount(st.completedThisMonth),
+            time = M.formatReadingTime(st.totalReadingSeconds),
+            detail = M.formatBreakdown(st.completedBreakdown),
+        },
+    }
+end
+
+--- One of the notes of the home: the one that `roll` (any integer, for instance a random number) falls on. Nil when there is none to show.
+function M.pickNote(home, roll)
+    local notes = type(home) == "table" and type(home.notes) == "table" and home.notes or {}
+    local usable = {}
+    for _, n in ipairs(notes) do
+        if type(n) == "table" and trim(n.text) ~= "" then usable[#usable + 1] = n end
+    end
+    if #usable == 0 then return nil end
+    return usable[(math.floor(tonumber(roll) or 0) % #usable) + 1]
+end
+
+--- What identifies the set of notes of a home, so that a pick is kept while they are the same.
+function M.noteSignature(home)
+    local out = {}
+    for _, n in ipairs(type(home) == "table" and type(home.notes) == "table" and home.notes or {}) do
+        out[#out + 1] = tostring(n.text)
+    end
+    return table.concat(out, "\n")
+end
+
+--- The home of the Códice as a preset of the Simple UI: pages of module ids. The first screen has what the web has on top (the greeting and the
+--- numbers) and what to continue; the next ones, the favorites, a note and the shelves. Three pages because four rows of covers do not fit on one
+--- screen of an e-reader, and a page turn is cheaper than a scroll on e-ink.
+M.PRESET_ID = "codice_home"
+function M.homePreset()
+    return {
+        id = M.PRESET_ID,
+        name = "Códice",
+        desc = "Saudação, números, continuar lendo, favoritos, nota e prateleiras",
+        layout = { pages = {
+            { id = 1, modules = { "codice_greeting", "codice_stats", "codice_continue" } },
+            { id = 2, modules = { "codice_favorites", "codice_note", "codice_shelf1" } },
+            { id = 3, modules = { "codice_shelf2", "codice_shelf3" } },
+        } },
+        settings = {},
+    }
 end
 
 -- ---------------------------------------------------------------- files
