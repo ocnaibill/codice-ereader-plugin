@@ -1,7 +1,7 @@
 --[[--
 The lock screen of the reader (the screensaver of KOReader) with the covers of the books that are on the device: each time the reader sleeps it
-shows another one, with "Códice" in the lower left corner; with no books, only the word in the corner. KOReader's own "random image" screensaver
-does the choosing: this makes the images (the cover on white, the size of the screen, with the word) in a folder of its own and points it there.
+shows another one, over all the screen, with "Códice" in the lower left corner; with no books, only the word in the corner. KOReader's own "random image" screensaver
+does the choosing: this makes the images (the cover over all the screen, with the word) in a folder of its own and points it there.
 The person's own screensaver setting is kept apart and comes back when this is turned off.
 ]]--
 
@@ -32,7 +32,8 @@ local function dir()
     return d
 end
 
---- One image: white, the cover (when there is one) in the middle at the biggest size that keeps it whole, and the word in the lower left corner.
+--- One image: the cover over all the screen (it is cut at the edges, as the web does, never stretched), and the word in the lower left corner on a
+--- white label, so that it reads over any cover. With no cover, white and the word.
 local function compose(cover_path)
     local RenderText = require("ui/rendertext")
     local w, h = Screen:getWidth(), Screen:getHeight()
@@ -43,21 +44,23 @@ local function compose(cover_path)
             local RenderImage = require("ui/renderimage")
             local img = RenderImage:renderImageFile(cover_path, false)
             if not img then return end
-            local plan = core.lockscreenFit(img:getWidth(), img:getHeight(), w, h)
-            local scaled = RenderImage:scaleBlitBuffer(img, plan.w, plan.h, true)
-            bb:blitFrom(scaled, plan.x, plan.y, 0, 0, plan.w, plan.h)
-            -- a thin frame, so that a pale cover does not melt into the white
-            local line = 2
-            bb:paintRect(plan.x - line, plan.y - line, plan.w + 2 * line, line, Blitbuffer.COLOR_BLACK)
-            bb:paintRect(plan.x - line, plan.y + plan.h, plan.w + 2 * line, line, Blitbuffer.COLOR_BLACK)
-            bb:paintRect(plan.x - line, plan.y, line, plan.h, Blitbuffer.COLOR_BLACK)
-            bb:paintRect(plan.x + plan.w, plan.y, line, plan.h, Blitbuffer.COLOR_BLACK)
+            local crop = core.coverCrop(img:getWidth(), img:getHeight(), w, h)
+            local scaled = RenderImage:scaleBlitBuffer(img, crop.w, crop.h, true)
+            bb:blitFrom(scaled, 0, 0, crop.x, crop.y, w, h)
             if scaled ~= img then scaled:free() end
         end)
         if not ok then logger.warn("codice: drawing a cover for the lock screen failed:", err) end
     end
     local margin = Screen:scaleBySize(28)
-    RenderText:renderUtf8Text(bb, margin, h - margin, Font:getFace("tfont", 30), "Códice", true, true, Blitbuffer.COLOR_BLACK)
+    local face = Font:getFace("tfont", 30)
+    local text = "Códice"
+    local metrics = RenderText:sizeUtf8Text(0, w, face, text, true, true)
+    local pad = Screen:scaleBySize(10)
+    local label_w, label_h = metrics.x + 2 * pad, math.floor(face.size * 1.5) + pad
+    if cover_path then
+        bb:paintRect(margin - pad, h - margin - math.floor(face.size * 1.1) - pad, label_w, label_h, Blitbuffer.COLOR_WHITE)
+    end
+    RenderText:renderUtf8Text(bb, margin, h - margin, face, text, true, true, Blitbuffer.COLOR_BLACK)
     return bb
 end
 

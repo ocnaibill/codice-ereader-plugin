@@ -113,7 +113,7 @@ Num EPUB baixado do Códice, o que você grifa ou anota no KOReader vai para o C
 
 ### Tela de bloqueio
 
-A tela de bloqueio do KOReader mostra a capa de uma das obras baixadas do Códice, uma diferente a cada vez que o leitor dorme, com a palavra **Códice** no canto inferior esquerdo; sem nenhuma obra baixada, só a palavra no canto. O plugin faz as imagens (a capa inteira sobre branco, do tamanho da tela, até 12 obras) numa pasta própria e aponta o protetor de tela do KOReader para ela; elas são refeitas quando as obras do aparelho mudam. Vem ligada; em **Códice → Tela de bloqueio com as capas** liga e desliga, e desligar devolve o protetor de tela que você tinha.
+A tela de bloqueio do KOReader mostra a capa de uma das obras baixadas do Códice **cobrindo a tela inteira** (cortada nas bordas, nunca esticada), uma diferente a cada vez que o leitor dorme, com a palavra **Códice** no canto inferior esquerdo, sobre uma etiqueta branca para ler em qualquer capa; sem nenhuma obra baixada, só a palavra no canto. O plugin faz as imagens (a capa sobre a tela toda, até 12 obras) numa pasta própria e aponta o protetor de tela do KOReader para ela; elas são refeitas quando as obras do aparelho mudam. Vem ligada; em **Códice → Tela de bloqueio com as capas** liga e desliga, e desligar devolve o protetor de tela que você tinha.
 
 ### Detalhes
 

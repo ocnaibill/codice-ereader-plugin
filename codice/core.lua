@@ -548,15 +548,6 @@ end
 
 -- ---------------------------------------------------------------- the lock screen
 
---- Where a cover goes on a screen of w x h: the biggest size that keeps it whole in four fifths of the screen, in the middle and a little above
---- the centre (the word goes at the bottom).
-function M.lockscreenFit(cw, ch, w, h)
-    local box_w, box_h = math.floor(w * 0.8), math.floor(h * 0.8)
-    local scale = math.min(box_w / cw, box_h / ch)
-    local nw, nh = math.max(1, math.floor(cw * scale)), math.max(1, math.floor(ch * scale))
-    return { w = nw, h = nh, x = math.floor((w - nw) / 2), y = math.floor((h - nh) / 2 - h * 0.02) }
-end
-
 --- The books (cards) that have a cover to show, at most `max`, in the order they come: `has_cover(card)` says.
 function M.lockscreenCovers(cards, has_cover, max)
     local out = {}
@@ -571,7 +562,8 @@ end
 function M.lockscreenSignature(cards, w, h)
     local ids = {}
     for _, c in ipairs(cards) do ids[#ids + 1] = tostring(c.id) end
-    return w .. "x" .. h .. ":" .. table.concat(ids, ",")
+    -- (the 2: the look of the images; a change of it makes them again)
+    return "2:" .. w .. "x" .. h .. ":" .. table.concat(ids, ",")
 end
 
 --- The notice after the plugin was updated: "Códice atualizado neste Kindle para a versão 0.14.0".
