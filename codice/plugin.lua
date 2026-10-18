@@ -744,6 +744,10 @@ function M.install(ui)
         local ok, err = pcall(instance.welcome, instance)
         if not ok then logger.warn("codice: welcome failed:", err) end
     end)
+    -- the lock screen with the covers: pointed at its images from the start, not only when the reader is about to sleep
+    UIManager:scheduleIn(10, function()
+        pcall(function() require("codice/lockscreen").start(instance) end)
+    end)
     if not M._modules_registered then
         M._modules_registered = true
         -- the modules of the Códice for the home of the Simple UI, by path: the registry loads them only when it lists the modules, so that
