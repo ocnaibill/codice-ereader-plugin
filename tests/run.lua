@@ -500,5 +500,14 @@ eq(sc.title, "Absolute Batman", "o cartão é o da série"); eq(sc.cover, "/c/9"
 eq(sc.collection.id, 21, "e a coleção que abre"); eq(sc.percent, 0, "sem o progresso da obra mais nova"); eq(sc.key, "codice:series:21", "chave própria")
 eq(Libview.workCard({ id = 1, title = "X", collapsed = nil }).collection, nil, "obra comum não é série")
 
+-- as abas
+eq(#core.TAB_IDS, 5, "cinco abas"); eq(core.TAB_IDS[1], "homescreen", "Acervo é a home"); eq(core.TAB_IDS[5], "codice_library", "Biblioteca por último")
+eq(core.libraryTab("codice_reading").start.spec.inProgress, true, "Em leitura lista o que se lê"); eq(core.libraryTab("codice_favorites").start.spec.favorite, true, "Favoritos")
+eq(core.libraryTab("codice_notes").start.kind, "notes", "Anotações"); eq(core.libraryTab("codice_library").start, nil, "Biblioteca abre na raiz"); eq(core.libraryTab("outra"), nil, "aba que não existe")
+for i = 2, 5 do eq(core.libraryTab(core.TAB_IDS[i]) ~= nil, true, "a aba " .. core.TAB_IDS[i] .. " está definida") end
+eq(Libview.worksParams({ inProgress = true }, 1).sort, nil, "em leitura: a ordem é a do servidor (o último aberto)")
+eq(Libview.worksParams({ inProgress = true, sort = "title" }, 1).sort, "title", "mas se pedirem uma ordem, vale")
+eq(Libview.worksParams({ favorite = true }, 1).sort, "title", "favoritas por título")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

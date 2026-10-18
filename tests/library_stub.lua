@@ -205,7 +205,7 @@ for _, mode in ipairs({ "online", "offline" }) do
     online = (mode == "online")
     print("-- " .. mode)
     local lib = open()
-    check(lib.model.kind == "list" and #lib.model.rows == 6, mode .. ": a raiz tem seis linhas")
+    check(lib.model.kind == "list" and #lib.model.rows == 7, mode .. ": a raiz tem sete linhas (com Mais)")
     check((lib.model.notice ~= nil) == (mode == "offline"), mode .. ": aviso só sem conexão")
     check(#lib.hits > 0, mode .. ": a raiz tem lugares para tocar")
 
@@ -322,6 +322,35 @@ local asked_limit = false
 for _, u in ipairs(calls) do if u:find("limit=", 1, true) and u:find("letter=F", 1, true) then asked_limit = true end end
 check(asked_limit, "pede só o que cabe na tela, da letra F")
 check(libp.letters_h and libp.letters_h > 0, "o espaço das letras é descontado")
+
+-- the tabs: each opens its own screen
+answers["/device/notes"] = { data = { data = { { id = 1, workId = 1, workTitle = "Duna", workAuthor = "Frank Herbert", quote = "Uma frase marcada.", body = "" },
+    { id = 2, workId = 2, workTitle = "Solaris", workAuthor = "Stanisław Lem", quote = "", body = "Minha nota." } }, total = 2 } }
+online = true
+local libn = Library:new{ plugin = plugin, start = { kind = "notes", title = "Anotações", page = 1 }, action_id = "codice_notes" }
+check(libn.model.kind == "list" and #libn.model.rows == 2 and libn.model.rows[1].multiline, "anotações: duas linhas de várias linhas")
+libn.model.rows[1].go()
+check(libn.model.kind == "detail" or libn.model.kind == "list", "tocar numa anotação abre a obra dela")
+online = false
+local libno = Library:new{ plugin = plugin, start = { kind = "notes", title = "Anotações", page = 1 }, action_id = "codice_notes" }
+check(libno.model.empty == "As anotações precisam de conexão." and libno.model.notice ~= nil, "anotações sem conexão: avisa")
+online = true
+answers["/device/works"] = { data = { data = { { id = 1, title = "Duna", author = "Frank Herbert", coverUrl = "/covers/1", percentComplete = 42, fileId = 10, format = "epub", fileCount = 1 } }, total = 1, page = 1, totalPages = 1 } }
+calls = {}
+local libr = Library:new{ plugin = plugin, start = { kind = "works", spec = { inProgress = true, title = "Em leitura" }, page = 1 }, action_id = "codice_reading" }
+check(libr.model.kind == "grid" and libr.model.chips == nil and libr.model.title == "Em leitura", "em leitura: grade sem filtros")
+local asked = false
+for _, u in ipairs(calls) do if u:find("inProgress=true", 1, true) and not u:find("sort=", 1, true) then asked = true end end
+check(asked, "em leitura pede o que se lê, na ordem do servidor")
+local libf = Library:new{ plugin = plugin, start = { kind = "works", spec = { favorite = true, title = "Favoritos" }, page = 1 }, action_id = "codice_favorites" }
+check(libf.model.kind == "grid" and libf.model.chips == nil, "favoritos: grade sem filtros")
+-- the root of a tab has no way back; the "more" screen lists what is not in the bar
+check(#libr.stack == 1, "a raiz de uma aba")
+libr:back()
+check(#libr.stack == 1, "voltar na raiz de uma aba não faz nada")
+local libm = open()
+libm:push("more")
+check(libm.model.kind == "list" and #libm.model.rows == 4, "mais: arquivos, configurações, energia e atualizar o plugin")
 
 print(string.format("%d verificações da biblioteca, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

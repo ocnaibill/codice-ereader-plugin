@@ -319,14 +319,35 @@ function Codice:booksDir()
     return dir
 end
 
---- Opens the library (DEC-198): categories, authors, series, formats and what is on the device, with or without a network.
-function Codice:openLibrary()
+--- Opens a screen of the library (DEC-198): the root, or what a tab of the bar opens (`action_id`: codice_reading, codice_favorites, codice_notes).
+--- With the bar of the Simple UI around it, the tab is lit.
+function Codice:openLibrary(action_id)
     if not self:connection() then
         return self:say("Conecte este leitor a um Códice primeiro: Códice → Conectar.")
     end
+    action_id = action_id or "codice_library"
+    local tab = core.libraryTab(action_id)
+    local start
+    if tab and tab.start then
+        start = { kind = tab.start.kind, title = tab.start.title, page = 1 }
+        if tab.start.spec then
+            start.spec = {}
+            for k, v in pairs(tab.start.spec) do start.spec[k] = v end
+        end
+    end
     guarded("abrir a biblioteca", function()
-        UIManager:show(require("codice/library"):new{ plugin = self })
+        UIManager:show(require("codice/library"):new{ plugin = self, start = start, action_id = action_id })
     end)()
+end
+
+--- The tabs of the Códice on the bar of the Simple UI: the home as "Acervo", then what is being read, the favorites, the notes and the library.
+function Codice:mountTabs()
+    local Config = require("infra/sui_config")
+    local QA = require("features/sui_quickactions")
+    Config.saveTabConfig(core.TAB_IDS)
+    QA.setDefaultActionLabel("homescreen", core.HOME_TAB_LABEL)
+    local su = self.ui[core.SIMPLEUI_SLOT or "codice"]
+    if su and su._scheduleRebuild then su:_scheduleRebuild() end
 end
 
 --- Opens a book of the home: the file is fetched if it is not on the reader yet. `before` runs just before the reader opens.
@@ -503,6 +524,13 @@ function Codice:addToMainMenu(menu_items)
                 callback = function() self:disconnect() end,
             },
             {
+                text = "Montar a barra de abas do Códice",
+                callback = guarded("montar as abas", function()
+                    self:mountTabs()
+                    self:say("A barra de baixo agora tem: Acervo, Em leitura, Favoritos, Anotações e Biblioteca.")
+                end),
+            },
+            {
                 text = "Montar a home do Códice",
                 callback = function() self:applyHomePreset() end,
             },
@@ -522,7 +550,10 @@ function Codice:mountHome()
     local Presets = require("features/sui_presets")
     return require("infra/sui_core").applyPresetWithNotice(function()
         local applied = Presets.applyBuiltin(core.PRESET_ID)
-        if applied then require("infra/sui_store"):set("simpleui_hs_active_preset", core.PRESET_ID) end
+        if applied then
+            require("infra/sui_store"):set("simpleui_hs_active_preset", core.PRESET_ID)
+            pcall(self.mountTabs, self)
+        end
         return applied
     end, function()
         local HS = package.loaded["screens/sui_homescreen"]
@@ -645,13 +676,20 @@ function M.install(ui)
             Registry.register("codice/modules/note")
             for n = 1, core.SHELF_SLOTS do Registry.register("codice/modules/shelf" .. n) end
         end)
-        -- the library, as an action that can be a tab of the bar or a button of the Simple UI
+        -- the screens of the library as actions that are tabs of the bar of the Simple UI (or buttons of it), and the bar around them
         pcall(function()
             local QA = require("features/sui_quickactions")
             local Config = require("infra/sui_config")
-            QA.register{
-                id = "codice_library", label = "Biblioteca do Códice", icon = Config.ICON.library, is_in_place = false,
-                execute = function() if M.live then M.live:openLibrary() end end,
+            for _, tab in ipairs(core.LIBRARY_TABS) do
+                QA.register{
+                    id = tab.id, label = tab.label, icon = Config.ICON[tab.icon] or Config.ICON.library, is_in_place = false,
+                    execute = function() if M.live then M.live:openLibrary(tab.id) end end,
+                }
+            end
+            require("infra/sui_core").BarInjection.register{
+                id = "codice_library", widget_name = "codice_library",
+                get_active_action = function(widget) return widget.action_id or "codice_library" end,
+                is_pageable = function(widget) return (widget.model and (widget.model.pages or 1) > 1) == true end,
             }
         end)
         -- the ready-made home, among the presets of the Simple UI (it hands out its list of built-in presets; no file of its own is changed)

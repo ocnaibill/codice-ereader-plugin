@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.9.2"
+M.PLUGIN_VERSION = "0.10.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -462,6 +462,25 @@ function M.offlineNotice(state, kept_at, date)
     local text = why .. ": mostrando só o que está no aparelho."
     if kept_at and kept_at > 0 then text = text .. " Atualizado em " .. date(kept_at) .. "." end
     return text
+end
+
+--- The tabs of the bar of the Simple UI for the Códice (DEC-197): the home ("homescreen", called Acervo), what is being read, the favorites, the
+--- notes, and the library. `start` says what each opens (see codice/library.lua); the library has none (its root).
+M.LIBRARY_TABS = {
+    { id = "codice_reading", label = "Em leitura", icon = "continue_", start = { kind = "works", spec = { inProgress = true, title = "Em leitura" } } },
+    { id = "codice_favorites", label = "Favoritos", icon = "ko_star", start = { kind = "works", spec = { favorite = true, title = "Favoritos" } } },
+    { id = "codice_notes", label = "Anotações", icon = "ko_bookmark", start = { kind = "notes", title = "Anotações" } },
+    { id = "codice_library", label = "Biblioteca", icon = "library" },
+}
+M.TAB_IDS = { "homescreen", "codice_reading", "codice_favorites", "codice_notes", "codice_library" }
+M.HOME_TAB_LABEL = "Acervo"
+
+--- The tab of an action id, or nil.
+function M.libraryTab(id)
+    for _, t in ipairs(M.LIBRARY_TABS) do
+        if t.id == id then return t end
+    end
+    return nil
 end
 
 -- ---------------------------------------------------------------- files

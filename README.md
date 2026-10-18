@@ -98,3 +98,7 @@ Em **Códice → Biblioteca** (e como ação "Biblioteca do Códice" para uma ab
 - **Sem conexão** (Wi-Fi desligado ou servidor fora do ar): uma faixa avisa, e a Biblioteca mostra só o que está no aparelho, com os números do aparelho, lendo da prateleira.
 
 Os testes de tela rodam com um KOReader de mentira (`tests/library_stub.lua`): pegam erro de lógica e de digitação, não provam o desenho no aparelho.
+
+### A barra de abas
+
+A barra de baixo do Simple UI tem as cinco abas do Códice, com os ícones do próprio Simple UI: **Acervo** (a home), **Em leitura** (o que você está lendo, o último aberto primeiro), **Favoritos**, **Anotações** (suas notas e destaques, mais novos primeiro; precisam de conexão) e **Biblioteca**. A aba acesa acompanha a tela. A raiz de cada aba não tem "voltar": a barra é a saída. As entradas que saíram da barra (arquivos do KOReader, configurações, energia, atualizar o plugin) estão em **Biblioteca → Mais**. A barra é montada junto com a home na primeira conexão; quem já tinha o plugin usa **Códice → Montar a barra de abas do Códice**.
