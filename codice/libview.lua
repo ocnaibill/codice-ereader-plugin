@@ -285,13 +285,82 @@ local function sequenceWord(works)
     return { "obra", "obras" }, "OBRAS"
 end
 
---- The sheet of a series from the answer of /device/collections/{id} (`{ collection, works, continue }`), and the shelf (what is on the device):
---- `{ name, cover, subtitle, go_on, heading, rows }`; a row is `{ id, label, title, state, here, card }` in the order of the series.
+local function numText(n)
+    return n == math.floor(n) and tostring(math.floor(n)) or tostring(n)
+end
+
+--- "caps 18 a 26", "cap 5": a stretch of chapters in words.
+local function spanWords(from, to)
+    if from == to then return "cap " .. numText(from) end
+    return "caps " .. numText(from) .. " a " .. numText(to)
+end
+
+--- What a work is marked with in the list of the story (DEC-202): the volume it is in (a volume file is its own) or its arc; nil when it has none.
+function Libview.markOf(w, mark)
+    if w.unit == "extra" then return nil end
+    if mark == "volume" then
+        local n = w.unit == "volume" and w.position or w.volumeNumber
+        return type(n) == "number" and n or nil
+    end
+    local arc = w.storyArc
+    return (type(arc) == "string" and arc ~= "") and arc or nil
+end
+
+--- The mark the works of a series carry, the volume before the arc; nil when no work has one.
+function Libview.markOfSeries(list)
+    local volume, arc = false, false
+    for _, w in ipairs(list) do
+        if w.unit ~= "extra" and w.available ~= false then
+            if type(w.volumeNumber) == "number" then volume = true end
+            if type(w.storyArc) == "string" and w.storyArc ~= "" then arc = true end
+        end
+    end
+    return volume and "volume" or (arc and "arc" or nil)
+end
+
+--- The divider before a work where the volume (or the arc) changes (DEC-202): `{ heading, note }`, or nil when nothing changes. `previous` is the
+--- mark of the work before. It is made of the works that carry the mark; it is not a file.
+function Libview.divider(list, w, mark, previous)
+    local key = Libview.markOf(w, mark)
+    if key == previous or (key == nil and previous == nil) then return nil end
+    if key == nil then return { heading = mark == "volume" and "Sem volume" or "Sem arco" } end
+    local lo, hi, chapters, members = nil, nil, 0, 0
+    for _, o in ipairs(list) do
+        if o.available ~= false and Libview.markOf(o, mark) == key then
+            members = members + 1
+            local a, b
+            if o.unit == "chapter" and type(o.position) == "number" then
+                chapters = chapters + 1
+                a, b = o.position, o.position
+            elseif type(o.coversFrom) == "number" and type(o.coversTo) == "number" then
+                a, b = o.coversFrom, o.coversTo
+            end
+            if a then
+                lo = lo and math.min(lo, a) or a
+                hi = hi and math.max(hi, b) or b
+            end
+        end
+    end
+    local parts = {}
+    if lo then parts[#parts + 1] = spanWords(lo, hi) end
+    if chapters > 0 then
+        parts[#parts + 1] = chapters .. (chapters == 1 and " capítulo" or " capítulos")
+    else
+        parts[#parts + 1] = members .. (members == 1 and " obra" or " obras")
+    end
+    return { heading = mark == "volume" and ("Volume " .. numText(key)) or key, note = table.concat(parts, " · ") }
+end
+
+--- The sheet of a series from the answer of /device/collections/{id} (`{ collection, works, continue, story }`), and the shelf (what is on the device):
+--- `{ name, cover, subtitle, go_on, heading, rows }`; a row is `{ id, label, title, state, here, card }` in the order of the series, or, when
+--- some work says what it contains or the chapters say their volume (DEC-202), in the order of the story, with `{ divider = { heading, note } }`
+--- and `{ gap = "faltam os caps 10 a 11" }` rows between them (they are not works: nothing opens).
 function Libview.seriesSheet(data, shelf)
     local c = type(data.collection) == "table" and data.collection or {}
     local rows, read, available = {}, 0, 0
     local list = type(data.works) == "table" and data.works or {}
     local words, heading = sequenceWord(list)
+    local rowOf = {}
     for _, w in ipairs(list) do
         if w.available ~= false then
             available = available + 1
@@ -305,18 +374,75 @@ function Libview.seriesSheet(data, shelf)
                 state = core.readLabel(w.percent):gsub(" lido", "")
             end
             local label = Libview.unitLabel(w.unit, w.position)
-            rows[#rows + 1] = {
+            local row = {
                 id = w.id, label = label, title = w.title, state = state, here = here,
                 card = { id = w.id, title = w.title, author = w.author, cover = w.coverUrl, percent = tonumber(w.percent) or 0, completed = w.completed == true,
                          fileCount = 2, key = "codice:" .. tostring(w.id) },
             }
+            rows[#rows + 1] = row
+            rowOf[w.id] = { row = row, work = w }
         end
     end
     local subtitle = available .. " " .. words[available == 1 and 1 or 2]
     if read > 0 then subtitle = subtitle .. " · " .. read .. (read == 1 and " lido" or " lidos") end
-    -- the publisher of the series (DEC-203), first: it is what the heading says of the whole
-    local publisher = type(c.publisher) == "string" and c.publisher ~= "" and c.publisher or nil
-    if publisher then subtitle = publisher .. " · " .. subtitle end
+
+    -- the story: the order, the loose chapters folded under the volume that holds them, the stretches no file contains, and what is read by content
+    local story = type(data.story) == "table" and data.story or nil
+    local mark = Libview.markOfSeries(list)
+    if story and type(story.order) == "table" and (story.ranged == true or mark) then
+        local ordered = {}
+        local previous
+        local function endOf(w) return type(w.coversTo) == "number" and w.coversTo or (type(w.position) == "number" and w.position or 0) end
+        for _, id in ipairs(story.order) do
+            local item = rowOf[id]
+            if item then
+                if mark then
+                    local d = Libview.divider(list, item.work, mark, previous)
+                    if d then ordered[#ordered + 1] = { divider = d, label = d.heading, title = d.note or "" } end
+                    previous = Libview.markOf(item.work, mark)
+                end
+                local nested = type(story.nested) == "table" and story.nested[tostring(id)]
+                if type(item.work.coversFrom) == "number" and type(item.work.coversTo) == "number" then
+                    local note = spanWords(item.work.coversFrom, item.work.coversTo)
+                    if type(nested) == "table" and #nested > 0 then note = note .. " (+" .. #nested .. " avulsos)" end
+                    item.row.title = note
+                elseif type(nested) == "table" and #nested > 0 then
+                    item.row.title = "+" .. #nested .. " avulsos"
+                end
+                ordered[#ordered + 1] = item.row
+            end
+        end
+        -- a stretch no file contains is said right after the last work that ends before it
+        for _, gap in ipairs(type(story.gaps) == "table" and story.gaps or {}) do
+            local at
+            for i, r in ipairs(ordered) do
+                local item = r.id and rowOf[r.id]
+                if item and endOf(item.work) < gap.from then at = i end
+            end
+            if at then
+                local text = gap.from == gap.to and ("falta o cap " .. numText(gap.from)) or ("faltam os caps " .. numText(gap.from) .. " a " .. numText(gap.to))
+                table.insert(ordered, at + 1, { gap = text, label = text, title = "" })
+            end
+        end
+        local unplaced = {}
+        for _, id in ipairs(type(story.unplaced) == "table" and story.unplaced or {}) do
+            if rowOf[id] then unplaced[#unplaced + 1] = rowOf[id].row end
+        end
+        if #unplaced > 0 then
+            ordered[#ordered + 1] = { divider = { heading = "Sem lugar na história" }, label = "Sem lugar na história", title = "" }
+            for _, r in ipairs(unplaced) do ordered[#ordered + 1] = r end
+        end
+        for _, w in ipairs(list) do -- the complementary works end the list
+            if w.unit == "extra" and rowOf[w.id] then ordered[#ordered + 1] = rowOf[w.id].row end
+        end
+        rows = ordered
+        -- what is read by content: the chapters a volume holds count (DEC-202)
+        if story.ranged == true and type(story.chapters) == "number" and story.chapters > 0 then
+            local r = tonumber(story.read) or 0
+            subtitle = story.chapters .. (story.chapters == 1 and " capítulo" or " capítulos")
+            if r > 0 then subtitle = subtitle .. " · " .. r .. (r == 1 and " lido" or " lidos") end
+        end
+    end
     local go_on
     if type(data.continue) == "table" and data.continue.id then
         local step = data.continue
@@ -331,7 +457,10 @@ function Libview.seriesSheet(data, shelf)
         go_on.card = go_on.card or { id = step.id, title = step.title, fileCount = 2, key = "codice:" .. tostring(step.id) }
     end
     local cover = c.coverUrl
-    if (not cover or cover:find("placeholder", 1, true)) and rows[1] then cover = rows[1].card.cover end
+    if (not cover or cover:find("placeholder", 1, true)) and rows[1] then cover = rows[1].card and rows[1].card.cover or nil end
+    -- the publisher of the series (DEC-203), first: it is what the heading says of the whole
+    local publisher = type(c.publisher) == "string" and c.publisher ~= "" and c.publisher or nil
+    if publisher then subtitle = publisher .. " · " .. subtitle end
     return { name = c.name, cover = cover, subtitle = subtitle, publisher = publisher, go_on = go_on, heading = heading, rows = rows }
 end
 

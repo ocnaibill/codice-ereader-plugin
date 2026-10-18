@@ -22,6 +22,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local InputDialog = require("ui/widget/inputdialog")
 local LeftContainer = require("ui/widget/container/leftcontainer")
+local TopContainer = require("ui/widget/container/topcontainer")
 local LineWidget = require("ui/widget/linewidget")
 local ProgressWidget = require("ui/widget/progresswidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -718,8 +719,10 @@ function Library:coverBox(m, card, holders)
         inner = FrameContainer:new{ bordersize = 1, padding = pad, margin = 0, width = m.card_w, height = m.cover_h,
             TextBoxWidget:new{ text = card.title or "?", face = face(16), width = m.card_w - 2 * pad - 2 } }
     end
-    -- a container whose size is the box (a FrameContainer takes the size of what is in it, and the cover that comes later is another size)
-    local holder = LeftContainer:new{ dimen = Geom:new{ w = m.card_w, h = m.cover_h }, inner }
+    -- a container whose size is the box (a FrameContainer takes the size of what is in it, and the cover that comes later is another size). It holds
+    -- the cover at the top and the left: a LeftContainer centres it in the height, and the placeholder (as tall as its text) floated down over what
+    -- is under the box, the button of the series
+    local holder = TopContainer:new{ dimen = Geom:new{ w = m.card_w, h = m.cover_h }, inner }
     if not kept and path then holders[#holders + 1] = { box = holder, card = card, w = m.card_w, h = m.cover_h } end
     return holder
 end
@@ -941,6 +944,24 @@ function Library:seriesBody(m, model, top, holders)
     end
     local label_w = math.floor(m.w * 0.2)
     for _, row in ipairs(model.rows) do
+      if row.divider or row.gap then
+        -- the volume or the arc that begins here, or a stretch no file contains (DEC-202): a label, nothing opens
+        local h = math.floor(m.srow_h * 0.75)
+        local line = HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin } }
+        if row.divider then
+            local heading = text(row.divider.heading, 18, { bold = true, max_width = m.content_w })
+            line[#line + 1] = heading
+            if row.divider.note and row.divider.note ~= "" then
+                line[#line + 1] = HorizontalSpan:new{ width = m.gap }
+                line[#line + 1] = text("· " .. row.divider.note, 16, { gray = true, max_width = math.max(40, m.content_w - heading:getSize().w - m.gap) })
+            end
+        else
+            line[#line + 1] = text(row.gap .. " (sem arquivo)", 16, { gray = true, max_width = m.content_w })
+        end
+        group[#group + 1] = box(m.w, h, line) -- at the left, as the rows are
+        group[#group + 1] = rule(m.w)
+        y = y + h + Screen:scaleBySize(1)
+      else
         local state_text = row.state or ""
         if row.here then state_text = (state_text ~= "" and (state_text .. " · ") or "") .. "no aparelho" end
         local state = text(state_text, 17, { gray = true })
@@ -961,6 +982,7 @@ function Library:seriesBody(m, model, top, holders)
         group[#group + 1] = rule(m.w)
         self.hits[#self.hits + 1] = { x = 0, y = y, w = m.w, h = m.srow_h, fn = function() self:openChapter(row.card) end }
         y = y + m.srow_h + Screen:scaleBySize(1)
+      end
     end
     return group, y
 end

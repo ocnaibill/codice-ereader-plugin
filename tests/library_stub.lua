@@ -69,7 +69,7 @@ Screen.scaleBySize = function(self, n) return math.floor(n * 1.9) end
 
 local widgets = { "ui/widget/buttondialog", "ui/widget/container/centercontainer", "ui/widget/confirmbox", "ui/widget/container/framecontainer",
     "ui/widget/horizontalgroup", "ui/widget/horizontalspan", "ui/widget/infomessage", "ui/widget/container/inputcontainer", "ui/widget/inputdialog",
-    "ui/widget/container/leftcontainer", "ui/widget/linewidget", "ui/widget/progresswidget", "ui/widget/textboxwidget", "ui/widget/textwidget",
+    "ui/widget/container/leftcontainer", "ui/widget/container/topcontainer", "ui/widget/linewidget", "ui/widget/progresswidget", "ui/widget/textboxwidget", "ui/widget/textwidget",
     "ui/widget/verticalgroup", "ui/widget/verticalspan", "ui/widget/imagewidget" }
 for _, name in ipairs(widgets) do stub(name, class()) end
 stub("ui/gesturerange", class())
