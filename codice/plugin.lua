@@ -449,7 +449,14 @@ function Codice:checkPlace()
         local ok, title = pcall(ui.toc.getTocTitleOfCurrentPage, ui.toc)
         if ok and type(title) == "string" and title ~= "" then chapter = title end
     end
-    local question = core.placeQuestion({ percent = here, chapter = chapter }, body, web, mine and body.device or "", os.time())
+    -- the passage on the screen now, so that the two places are said the same way (the one of the Códice has its passage)
+    local snippet
+    local Screen = require("device").screen
+    local okp, res = pcall(function()
+        return ui.document:getTextFromPositions({ x = 0, y = 0 }, { x = Screen:getWidth(), y = Screen:getHeight() })
+    end)
+    if okp and type(res) == "table" and type(res.text) == "string" then snippet = core.passage(res.text, 200) end
+    local question = core.placeQuestion({ percent = here, chapter = chapter, snippet = snippet }, body, web, mine and body.device or "", os.time())
     if not question then return end
     UIManager:show(require("codice/conflict"):new{
         question = question,
@@ -458,6 +465,8 @@ function Codice:checkPlace()
 end
 
 function Codice:onReaderReady()
+    -- the notes of the book: what is waiting is sent, and what the Códice has is taken in (a little later, so that the book is on the screen first)
+    UIManager:scheduleIn(6, function() require("codice/annotations").run(self, self.ui, true) end)
     if not (self.ui.kosync and self.ui.kosync.settings and self.ui.kosync.settings.auto_sync) then return end
     UIManager:scheduleIn(4, function()
         local ok, err = pcall(self.checkPlace, self)
@@ -465,8 +474,20 @@ function Codice:onReaderReady()
     end)
 end
 
+--- A highlight or a note was made, changed or deleted: what changed is sent when the person stops for a moment (not for each letter of a note).
+function Codice:onAnnotationsModified()
+    if self._notes_timer then UIManager:unschedule(self._notes_timer) end
+    self._notes_timer = function()
+        self._notes_timer = nil
+        require("codice/annotations").run(self, self.ui, false)
+    end
+    UIManager:scheduleIn(5, self._notes_timer)
+end
+
 --- A book is being closed: the home of the Simple UI shows it first in "continue" when the person comes back to it, without waiting to ask.
 function Codice:onCloseDocument()
+    -- what was left to send of the notes goes now, while the book is still open (it needs the document)
+    require("codice/annotations").run(self, self.ui, false)
     local ok, err = pcall(function()
         local doc = self.ui.document
         local path = doc and doc.file
@@ -608,6 +629,7 @@ end
 function Codice:onNetworkConnected()
     local c = self:connection()
     if not c then return end
+    if self.ui.document then UIManager:scheduleIn(5, function() require("codice/annotations").run(self, self.ui, true) end) end
     if not (c.synced_at and os.time() - c.synced_at < SYNC_EVERY) then
         UIManager:scheduleIn(3, function()
             local ok, err = pcall(self.syncConfig, self, true)

@@ -5,6 +5,7 @@ package.path = "./?.lua;" .. package.path
 local core = require("codice/core")
 local Shelf = require("codice/shelf")
 local Libview = require("codice/libview")
+local Notesync = require("codice/notesync")
 
 local failures, count = 0, 0
 local function eq(got, want, label)
@@ -546,6 +547,76 @@ eq(back.forward, false, "o outro está atrás"); eq(back.go_text, "Voltar para 5
 eq(core.placeQuestion({ percent = 50 }, { percentage = 0.505 }, nil, "K", 0), nil, "menos de um ponto: é o mesmo lugar")
 eq(core.placeQuestion({ percent = 50 }, nil, nil, "K", 0), nil, "sem lugar do servidor"); eq(core.placeQuestion({ percent = 50 }, {}, nil, "K", 0), nil, "sem percentual")
 eq(core.placeQuestion({ percent = 0 }, { percentage = 0.4, device = "K", timestamp = 1 }, nil, "K", 100).there.who, "Neste leitor", "o mesmo aparelho (cópia nova): neste leitor")
+
+-- destaques e notas: a identidade, o que mudou, o que fazer com a resposta
+eq(#Notesync.ref(5, "/body/DocFragment[2]/body/p[1]/text().0", "/body/DocFragment[2]/body/p[1]/text().9"), 16, "a referência tem 16 caracteres")
+eq(Notesync.ref(5, "a", "b"), Notesync.ref(5, "a", "b"), "a mesma passagem é sempre a mesma referência")
+eq(Notesync.ref(5, "a", "b") ~= Notesync.ref(5, "a", "c"), true, "outro fim, outra referência"); eq(Notesync.ref(5, "a", "b") ~= Notesync.ref(6, "a", "b"), true, "outro livro, outra")
+eq(Notesync.sig("x", "y") ~= Notesync.sig("x", "z"), true, "a nota mudou: a assinatura muda"); eq(Notesync.sig("x", nil), Notesync.sig("x", nil), "a mesma coisa, a mesma")
+local items = {
+    { pos0 = "p1", pos1 = "p2", text = "trecho um", note = "minha nota", drawer = "lighten", chapter = "Cap 1", datetime = "2026-10-18 10:00:00" },
+    { pos0 = "p3", pos1 = "p4", text = "trecho dois", drawer = "underscore", datetime = "2026-10-18 10:05:00" },
+    { page = "p9", text = "" , pos0 = nil },            -- um marcador de página: não entra
+    { pos0 = "p5", pos1 = "p6", text = "   " },          -- sem trecho: não entra
+}
+local cur = Notesync.current(77, items)
+local nref = 0; for _ in pairs(cur) do nref = nref + 1 end
+eq(nref, 2, "só os destaques com trecho entram")
+local st = Notesync.new()
+eq(Notesync.plan(st, cur), true, "tudo é novo: há o que enviar")
+local puts = 0; for _, op in pairs(st.pending) do if op == "put" then puts = puts + 1 end end
+eq(puts, 2, "dois envios na fila")
+local r1 = Notesync.ref(77, "p1", "p2")
+Notesync.sent(st, cur[r1], 901); Notesync.sent(st, cur[Notesync.ref(77, "p3", "p4")], 902)
+eq(st.items[r1].id, 901, "o número no Códice fica guardado"); eq(next(st.pending), nil, "fila vazia depois de enviar")
+eq(Notesync.plan(st, cur), false, "nada mudou: nada a enviar")
+items[1].note = "nota editada"
+cur = Notesync.current(77, items)
+eq(Notesync.plan(st, cur), true, "a nota mudou"); eq(st.pending[r1], "put", "vai de novo")
+Notesync.sent(st, cur[r1], 901)
+local without = { items[2] }
+cur = Notesync.current(77, without)
+eq(Notesync.plan(st, cur), true, "um destaque sumiu"); eq(st.pending[r1], "delete", "apagar no Códice")
+Notesync.deleted(st, r1)
+eq(st.items[r1], nil, "saiu do estado"); eq(Notesync.plan(st, cur), false, "nada mais")
+-- feito e apagado antes de enviar: nada a apagar
+local st2 = Notesync.new()
+local c2 = Notesync.current(1, { { pos0 = "a", pos1 = "b", text = "x" } })
+Notesync.plan(st2, c2)
+eq(Notesync.plan(st2, {}), false, "feito e apagado antes de enviar"); eq(next(st2.pending), nil, "não sobra nada na fila")
+eq(table.concat(Notesync.known(st), ","), "902", "os números que se perguntam ao Códice")
+local b = Notesync.body(cur[Notesync.ref(77, "p3", "p4")], "Kindle", 902)
+eq(b.text, "trecho dois", "corpo do envio"); eq(b.note, "", "sem nota, vazia"); eq(b.id, 902, "com o número que tem no Códice"); eq(b.device, "Kindle", "o aparelho")
+-- a resposta do Códice
+local st3 = Notesync.new()
+local cur3 = Notesync.current(77, { { pos0 = "p1", pos1 = "p2", text = "um", note = "local" }, { pos0 = "p3", pos1 = "p4", text = "dois" } })
+Notesync.plan(st3, cur3)
+local ref1, ref2 = Notesync.ref(77, "p1", "p2"), Notesync.ref(77, "p3", "p4")
+Notesync.sent(st3, cur3[ref1], 11); Notesync.sent(st3, cur3[ref2], 12)
+local act = Notesync.merge(st3, cur3, { notes = {
+    { id = 11, ref = ref1, kind = "note", body = "local" },                    -- igual: nada
+    { id = 12, ref = ref2, kind = "note", body = "editada na web" },           -- a web mudou a nota
+    { id = 13, kind = "highlight", quote = "da web", body = "", place = "/body/DocFragment[3]/body/p[10]" }, -- nova, só o parágrafo
+    { id = 14, ref = "outroaparelho1", kind = "highlight", quote = "de outro", body = "", pos0 = "q1", pos1 = "q2" }, -- nova, de um leitor
+}, gone = { 99 } })
+eq(#act.update, 1, "uma nota mudou na web"); eq(act.update[1].ref, ref2, "a certa"); eq(act.update[1].note, "editada na web", "o texto novo")
+eq(#act.add, 2, "duas novas"); eq(act.add[1].pos0, nil, "a da web não tem pontos exatos"); eq(act.add[2].pos0, "q1", "a de outro leitor tem")
+eq(#act.remove, 0, "nada a remover: o número 99 não é nosso")
+Notesync.plan(st3, cur3)
+st3.pending[ref1] = "put"
+local act2 = Notesync.merge(st3, cur3, { notes = { { id = 11, ref = ref1, kind = "note", body = "diferente na web" } }, gone = { 12 } })
+eq(#act2.update, 0, "o que está esperando para ser enviado é do leitor: o Códice espera"); eq(#act2.remove, 1, "a nota 12 sumiu do Códice"); eq(act2.remove[1].ref, ref2, "remove o destaque certo")
+local st4 = Notesync.new()
+local act3 = Notesync.merge(st4, Notesync.current(77, { { pos0 = "p1", pos1 = "p2", text = "um" } }), { notes = { { id = 50, ref = ref1, kind = "highlight", body = "" } }, gone = {} })
+eq(st4.items[ref1].id, 50, "o estado se perdeu: adota o destaque que já tinha o mesmo identificador"); eq(#act3.add, 0, "e não o põe duas vezes")
+eq(Notesync.sane(nil).version, 1, "sem estado, um novo"); eq(Notesync.sane({ version = 9 }).version, 1, "versão desconhecida, novo")
+
+eq(core.passage("  uma   frase\ncom  espaços  ", 200), "uma frase com espaços", "espaços juntos e pontas aparadas")
+eq(core.passage("um dois três quatro cinco seis sete", 20), "um dois três quatro…", "corta numa palavra")
+eq(core.passage("", 20), "", "vazio"); eq(core.passage(nil, 20), "", "sem texto")
+eq(core.passage("abcdefghijklmnopqrstuvwxyz", 10), "abcdefghij…", "palavra maior que o limite: corta no limite")
+local qs = core.placeQuestion({ percent = 50, chapter = "C", snippet = "daqui" }, { percentage = 0.64, device = "Web", timestamp = 1 }, nil, "K", 10)
+eq(qs.here.snippet, "daqui", "o trecho daqui entra na pergunta")
 
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

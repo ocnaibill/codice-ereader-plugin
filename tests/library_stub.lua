@@ -357,5 +357,28 @@ local libm = open()
 libm:push("more")
 check(libm.model.kind == "list" and #libm.model.rows == 4, "mais: arquivos, configurações, energia e atualizar o plugin")
 
+-- a long series: the first page has the cover and the button, the next ones only rows, and there is a way to jump
+local long = {}
+for n = 1, 60 do long[#long + 1] = { id = 300 + n, title = "Mangá #" .. n, author = "A", coverUrl = "/c/" .. n, percent = 0, available = true, unit = "chapter", position = n } end
+answers["/device/collections/77"] = { data = { collection = { id = 77, name = "Mangá longo" }, continue = { id = 301, title = "Mangá #1", unit = "chapter", position = 1, begun = false }, works = long } }
+online = true
+local libl = open()
+libl:push("series", { id = 77, title = "Mangá longo" })
+local m1 = libl.model
+check(m1.kind == "series" and m1.pages > 2 and m1.total == 60 and not m1.compact, "série longa: várias páginas, a primeira com a capa")
+check(#m1.rows < 60 and m1.series.go_on ~= nil, "a primeira página não traz tudo e tem o botão")
+libl:turn(1)
+local m2 = libl.model
+check(m2.page == 2 and m2.compact and #m2.rows > #m1.rows, "as seguintes são só linhas, e cabem mais")
+check(m2.from == #m1.rows + 1 and m2.rows[1].label == "Cap. " .. (#m1.rows + 1), "continua de onde a primeira parou")
+libl:askJump(m2)
+local jump = shown[#shown]
+check(jump and #jump.buttons >= 3, "o diálogo de ir para tem as partes")
+jump.buttons[2][1].callback()
+check(libl.model.page > 1 and libl.model.rows[1].label ~= "Cap. 1", "ir para a segunda parte abre uma página mais adiante")
+local last = libl
+for _ = 1, 50 do last:turn(1) end
+check(last.model.page == last.model.pages and last.model.rows[#last.model.rows].label == "Cap. 60", "a última página termina no último capítulo")
+
 print(string.format("%d verificações da biblioteca, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

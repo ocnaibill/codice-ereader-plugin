@@ -424,10 +424,10 @@ function Library:modelMore(view)
 end
 
 --- Rows of a series sheet that fit a page: what is left under the block of the series, the button, the heading and over the foot.
-function Library:seriesRowsPerPage(has_button, has_notice)
+function Library:seriesRowsPerPage(has_button, has_notice, compact)
     local m = self.m
-    local cover_h = math.floor(math.floor(m.w * 0.2) * 1.5)
-    local used = m.header_h + (has_notice and m.notice_h or 0) + cover_h + m.gap + (has_button and (Screen:scaleBySize(54) + m.gap) or 0) + Screen:scaleBySize(35) + m.foot_h
+    local cover_h = compact and 0 or math.floor(math.floor(m.w * 0.2) * 1.5)
+    local used = m.header_h + (has_notice and m.notice_h or 0) + cover_h + m.gap + (has_button and not compact and (Screen:scaleBySize(54) + m.gap) or 0) + Screen:scaleBySize(35) + m.foot_h
     return math.max(3, math.floor((m.h - used) / (m.srow_h + Screen:scaleBySize(1))))
 end
 
@@ -458,12 +458,25 @@ function Library:modelSeries(view)
         end
         sheet = { name = view.title, cover = cards[1] and cards[1].cover, subtitle = #rows .. (#rows == 1 and " obra" or " obras") .. " no aparelho", heading = "OBRAS", rows = rows }
     end
-    local per = self:seriesRowsPerPage(sheet.go_on ~= nil, offline)
-    local pages = math.max(1, math.ceil(#sheet.rows / per))
+    -- the first page has the cover, the name and the button, so it has fewer rows; the next ones are only rows (a long series: a manga has hundreds
+    -- of chapters, and a page of four would be a thousand turns)
+    local first = self:seriesRowsPerPage(sheet.go_on ~= nil, offline)
+    local rest = self:seriesRowsPerPage(false, offline, true)
+    local n = #sheet.rows
+    local pages = n <= first and 1 or (1 + math.ceil((n - first) / rest))
     local page = math.min(math.max(1, view.page or 1), pages)
+    local from, to
+    if page == 1 then
+        from, to = 1, math.min(n, first)
+    else
+        from = first + (page - 2) * rest + 1
+        to = math.min(n, from + rest - 1)
+    end
     local shown = {}
-    for i = (page - 1) * per + 1, math.min(#sheet.rows, page * per) do shown[#shown + 1] = sheet.rows[i] end
-    return { kind = "series", title = sheet.name or "Série", series = sheet, rows = shown, page = page, pages = pages, notice = self:notice(offline) }
+    for i = from, to do shown[#shown + 1] = sheet.rows[i] end
+    sheet.first, sheet.rest = first, rest
+    return { kind = "series", title = sheet.name or "Série", series = sheet, rows = shown, page = page, pages = pages, from = from, to = to, total = n,
+             compact = page > 1, notice = self:notice(offline) }
 end
 
 --- The sheet of a work.
@@ -846,37 +859,75 @@ function Library:openChapter(card)
     self.plugin:chooseAndOpen(card, function() UIManager:close(self) end)
 end
 
+--- A list of parts of a long series to jump to: "Cap. 1 – Cap. 9", "Cap. 10 – Cap. 18"... as many buttons as fit a dialog.
+function Library:askJump(model)
+    local sheet = model.series
+    local view = self.stack[#self.stack]
+    local pages = model.pages
+    local step = math.max(1, math.ceil(pages / 10))
+    local dialog
+    local buttons = {}
+    local function label_of(row) return row.label ~= "" and row.label or row.title end
+    local page = 1
+    while page <= pages do
+        local last_page = math.min(pages, page + step - 1)
+        local from = page == 1 and 1 or (sheet.first + (page - 2) * sheet.rest + 1)
+        local to = last_page == 1 and math.min(model.total, sheet.first) or math.min(model.total, sheet.first + (last_page - 1) * sheet.rest)
+        local target = page
+        buttons[#buttons + 1] = {{ text = label_of(sheet.rows[from]) .. " – " .. label_of(sheet.rows[to]), callback = function()
+            UIManager:close(dialog)
+            view.page = target
+            self:refresh()
+        end }}
+        page = last_page + 1
+    end
+    buttons[#buttons + 1] = {{ text = "Cancelar", callback = function() UIManager:close(dialog) end }}
+    dialog = ButtonDialog:new{ title = "Ir para", title_align = "center", buttons = buttons }
+    UIManager:show(dialog)
+end
+
 --- The page of a series: block with cover and name, the button to go on, and the chapters.
 function Library:seriesBody(m, model, top, holders)
     local sheet = model.series
     local group = VerticalGroup:new{ align = "left" }
     local y = top + m.gap
     group[#group + 1] = VerticalSpan:new{ width = m.gap }
-    local cover_w = math.floor(m.w * 0.2)
-    local cover_h = math.floor(cover_w * 1.5)
-    local cover = self:coverBox({ card_w = cover_w, cover_h = cover_h }, { cover = sheet.cover, title = sheet.name }, holders)
-    local info_w = m.content_w - cover_w - m.gap
-    local info = VerticalGroup:new{ align = "left",
-        TextBoxWidget:new{ text = sheet.name or "?", face = face(26, true), width = info_w },
-        VerticalSpan:new{ width = Screen:scaleBySize(6) },
-        TextBoxWidget:new{ text = sheet.subtitle or "", face = face(20), width = info_w },
-    }
-    group[#group + 1] = HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = m.margin }, cover, HorizontalSpan:new{ width = m.gap }, info }
-    y = y + math.max(cover_h, info:getSize().h) + m.gap
-    group[#group + 1] = VerticalSpan:new{ width = m.gap }
-
-    if sheet.go_on then
-        local bh = Screen:scaleBySize(54)
-        group[#group + 1] = HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin },
-            FrameContainer:new{ bordersize = Screen:scaleBySize(5), padding = 0, margin = 0, width = m.content_w, height = bh,
-                CenterContainer:new{ dimen = Geom:new{ w = m.content_w - 10, h = bh - 10 }, text(sheet.go_on.text, 20, { bold = true, max_width = m.content_w - 24 }) } } }
-        self.hits[#self.hits + 1] = { x = m.margin, y = y, w = m.content_w, h = bh, fn = function() self:openChapter(sheet.go_on.card) end }
+    if not model.compact then
+        local cover_w = math.floor(m.w * 0.2)
+        local cover_h = math.floor(cover_w * 1.5)
+        local cover = self:coverBox({ card_w = cover_w, cover_h = cover_h }, { cover = sheet.cover, title = sheet.name }, holders)
+        local info_w = m.content_w - cover_w - m.gap
+        local info = VerticalGroup:new{ align = "left",
+            TextBoxWidget:new{ text = sheet.name or "?", face = face(26, true), width = info_w },
+            VerticalSpan:new{ width = Screen:scaleBySize(6) },
+            TextBoxWidget:new{ text = sheet.subtitle or "", face = face(20), width = info_w },
+        }
+        group[#group + 1] = HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = m.margin }, cover, HorizontalSpan:new{ width = m.gap }, info }
+        y = y + math.max(cover_h, info:getSize().h) + m.gap
         group[#group + 1] = VerticalSpan:new{ width = m.gap }
-        y = y + bh + m.gap
+
+        if sheet.go_on then
+            local bh = Screen:scaleBySize(54)
+            group[#group + 1] = HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin },
+                FrameContainer:new{ bordersize = Screen:scaleBySize(5), padding = 0, margin = 0, width = m.content_w, height = bh,
+                    CenterContainer:new{ dimen = Geom:new{ w = m.content_w - 10, h = bh - 10 }, text(sheet.go_on.text, 20, { bold = true, max_width = m.content_w - 24 }) } } }
+            self.hits[#self.hits + 1] = { x = m.margin, y = y, w = m.content_w, h = bh, fn = function() self:openChapter(sheet.go_on.card) end }
+            group[#group + 1] = VerticalSpan:new{ width = m.gap }
+            y = y + bh + m.gap
+        end
     end
 
     local head_h = Screen:scaleBySize(34)
-    group[#group + 1] = box(m.w, head_h, HorizontalGroup:new{ HorizontalSpan:new{ width = m.margin }, text(sheet.heading or "OBRAS", 15, { bold = true }) })
+    -- the heading, and at its end which ones these are of how many (tap it to jump to another part of a long series)
+    local counter = (model.pages or 1) > 1 and text(model.from .. "–" .. model.to .. " de " .. model.total .. " · Ir para", 15, { bold = true }) or nil
+    local heading = text(sheet.heading or "OBRAS", 15, { bold = true })
+    local line = HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin }, heading }
+    if counter then
+        line[#line + 1] = HorizontalSpan:new{ width = math.max(m.gap, m.content_w - heading:getSize().w - counter:getSize().w) }
+        line[#line + 1] = counter
+        self.hits[#self.hits + 1] = { x = 0, y = y, w = m.w, h = head_h, fn = function() self:askJump(model) end }
+    end
+    group[#group + 1] = CenterContainer:new{ dimen = Geom:new{ w = m.w, h = head_h }, line }
     group[#group + 1] = rule(m.w)
     y = y + head_h + Screen:scaleBySize(1)
     if #model.rows == 0 then
