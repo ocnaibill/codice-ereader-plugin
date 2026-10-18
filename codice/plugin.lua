@@ -29,6 +29,19 @@ local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 local util = require("util")
 
+--- Runs `fn` so that an error is shown to the person and written to the log with its traceback (crash.log), instead of closing KOReader: an
+--- error nobody catches in an event ends the program. `what` says what was being done ("abrir o livro").
+local function guarded(what, fn)
+    return function(...)
+        local args = table.pack(...)
+        local ok, err = xpcall(function() return fn(table.unpack(args, 1, args.n)) end, debug.traceback)
+        if not ok then
+            logger.err("codice: could not " .. what .. ":", err)
+            UIManager:show(InfoMessage:new{ text = "O Códice não conseguiu " .. what .. ".\n\n" .. core.firstLine(err) })
+        end
+    end
+end
+
 local SYNC_EVERY = 6 * 3600 -- the configuration is asked again at most this often, when the network comes back
 local UPDATE_EVERY = 7 * 24 * 3600 -- and a newer plugin is looked for at most this often
 
@@ -298,14 +311,14 @@ function Codice:openBook(card, before)
     if not c then return end
     if not card.fileId or card.fileId == 0 then return self:say("Esta obra não tem um arquivo para abrir.") end
     local path = self:booksDir() .. "/" .. core.bookFileName(card)
-    local function open()
+    local open = guarded("abrir o livro", function()
         if before then before() end
         require("apps/reader/readerui"):showReader(path)
-    end
+    end)
     if lfs.attributes(path, "mode") == "file" and lfs.attributes(path, "size") > 0 then return open() end
-    NetworkMgr:runWhenOnline(function()
+    NetworkMgr:runWhenOnline(guarded("baixar o livro", function()
         UIManager:show(InfoMessage:new{ text = "Baixando “" .. tostring(card.title) .. "”…", timeout = 1 })
-        UIManager:nextTick(function()
+        UIManager:nextTick(guarded("baixar o livro", function()
             local part = path .. ".part"
             local handle = io.open(part, "wb")
             if not handle then return self:say("Não consegui gravar o livro em " .. self:booksDir()) end
@@ -319,16 +332,20 @@ function Codice:openBook(card, before)
                 return self:say("Não consegui guardar o livro baixado.")
             end
             open()
-        end)
-    end)
+        end))
+    end))
 end
 
 --- Opens a work: straight away when it has one file, else the person chooses which (the main one, the others, the last read marked).
 function Codice:chooseAndOpen(card, before)
+    return guarded("abrir a obra", function() return self:_chooseAndOpen(card, before) end)()
+end
+
+function Codice:_chooseAndOpen(card, before)
     if (card.fileCount or 1) <= 1 then return self:openBook(card, before) end
     local c = self:connection()
     if not c then return end
-    NetworkMgr:runWhenOnline(function()
+    NetworkMgr:runWhenOnline(guarded("escolher o arquivo", function()
         local code, data = api.request(c.url .. "/device/works/" .. card.id .. "/files", { user = c.username, password = c.token })
         if code ~= 200 or type(data) ~= "table" or type(data.files) ~= "table" or #data.files == 0 then
             return self:openBook(card, before) -- the choice cannot be had: the one the home pointed to
@@ -342,16 +359,16 @@ function Codice:chooseAndOpen(card, before)
         for _, choice in ipairs(choices) do
             buttons[#buttons + 1] = {{
                 text = choice.label,
-                callback = function()
+                callback = guarded("abrir o livro", function()
                     UIManager:close(dialog)
                     self:openBook({ id = card.id, title = card.title, fileId = choice.id, format = choice.format }, before)
-                end,
+                end),
             }}
         end
         buttons[#buttons + 1] = {{ text = "Cancelar", callback = function() UIManager:close(dialog) end }}
         dialog = ButtonDialog:new{ title = (card.title or "?") .. "\n\nQual arquivo abrir?", title_align = "center", buttons = buttons }
         UIManager:show(dialog)
-    end)
+    end))
 end
 
 --- A book opened on this reader for the first time starts at the first page, and KOSync says nothing when the place the server has was

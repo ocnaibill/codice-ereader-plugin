@@ -169,11 +169,18 @@ local function renderCell(key, cw, cell_h)
         TapCodice = { GestureRange:new{ ges = "tap", range = function() return tappable.dimen end } },
     }
     function tappable:onTapCodice()
-        local p = plugin()
-        if p then
-            p:chooseAndOpen(card)
-        else
-            UIManager:show(require("ui/widget/infomessage"):new{ text = "O Códice não está pronto. Tente de novo." })
+        -- an error here would end KOReader: it is shown instead, and the traceback goes to the log
+        local ok, err = xpcall(function()
+            local p = plugin()
+            if p then
+                p:chooseAndOpen(card)
+            else
+                UIManager:show(require("ui/widget/infomessage"):new{ text = "O Códice não está pronto. Tente de novo." })
+            end
+        end, debug.traceback)
+        if not ok then
+            require("logger").err("codice: tap on a book failed:", err)
+            UIManager:show(require("ui/widget/infomessage"):new{ text = "O Códice não conseguiu abrir a obra.\n\n" .. core.firstLine(err) })
         end
         return true
     end

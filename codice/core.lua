@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.4.2"
+M.PLUGIN_VERSION = "0.4.3"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
@@ -215,6 +215,13 @@ function M.pluginDirFromSource(source, cwd)
         dir = dir == "." and base or (base .. "/" .. dir)
     end
     return dir
+end
+
+--- The first line of an error message (the rest is the traceback), to show a person.
+function M.firstLine(err)
+    local line = tostring(err or ""):match("^[^\n]*") or ""
+    if #line > 240 then line = line:sub(1, 240) .. "…" end
+    return line
 end
 
 -- ---------------------------------------------------------------- files

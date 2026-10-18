@@ -192,5 +192,9 @@ eq(core.pluginDirFromSource("@/x/outro/arquivo.lua"), nil, "não é da pasta cod
 eq(core.pluginDirFromSource("@/codice/update.lua"), nil, "sem pasta do plugin")
 eq(core.pluginDirFromSource(nil), nil, "sem fonte")
 
+eq(core.firstLine("erro curto\nstack traceback:\n\tx"), "erro curto", "só a primeira linha do erro")
+eq(core.firstLine(nil), "", "sem erro")
+eq(#core.firstLine(string.rep("x", 500)) > 240, true, "linha longa é cortada com reticências")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)
