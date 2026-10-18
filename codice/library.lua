@@ -604,7 +604,8 @@ function Library:coverBox(m, card, holders)
         inner = FrameContainer:new{ bordersize = 1, padding = pad, margin = 0, width = m.card_w, height = m.cover_h,
             TextBoxWidget:new{ text = card.title or "?", face = face(16), width = m.card_w - 2 * pad - 2 } }
     end
-    local holder = FrameContainer:new{ bordersize = 0, padding = 0, margin = 0, width = m.card_w, height = m.cover_h, inner }
+    -- a container whose size is the box (a FrameContainer takes the size of what is in it, and the cover that comes later is another size)
+    local holder = LeftContainer:new{ dimen = Geom:new{ w = m.card_w, h = m.cover_h }, inner }
     if not kept and path then holders[#holders + 1] = { box = holder, card = card, w = m.card_w, h = m.cover_h } end
     return holder
 end
@@ -728,7 +729,7 @@ function Library:detailBody(m, model, top, holders)
             local state = text(f.state, 17, { gray = true })
             local label = text(f.label, 20, { bold = true, max_width = m.content_w - state:getSize().w - m.gap })
             local line = HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin }, label,
-                HorizontalSpan:new{ width = math.max(0, m.content_w - label:getSize().w - state:getSize().w) }, state }
+                HorizontalSpan:new{ width = math.max(0, m.content_w - label:getSize().w - state:getSize().w - m.gap) }, state }
             local h = Screen:scaleBySize(54)
             group[#group + 1] = CenterContainer:new{ dimen = Geom:new{ w = m.w, h = h }, line }
             group[#group + 1] = rule(m.w)
