@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.6.1"
+M.PLUGIN_VERSION = "0.7.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -377,28 +377,72 @@ function M.noteSignature(home)
     return table.concat(out, "\n")
 end
 
---- The home of the Códice as a preset of the Simple UI: pages of module ids. The first screen has what the web has on top (the greeting and the
---- numbers) and what to continue; the next ones, the favorites and the shelves. Three pages because four rows of covers do not fit on one
---- screen of an e-reader, and a page turn is cheaper than a scroll on e-ink.
+--- The home of the Códice as a preset of the Simple UI: pages of module ids. One page: what the web has on top (the greeting and the numbers)
+--- and what to continue. The favorites and the shelves are for the library screen, not for the home; their modules are there to be added.
 M.PRESET_ID = "codice_home"
 function M.homePreset()
     return {
         id = M.PRESET_ID,
         name = "Códice",
-        desc = "Saudação, números, continuar lendo, favoritos e prateleiras",
+        desc = "Saudação, números e continuar lendo",
         layout = { pages = {
             { id = 1, modules = { "codice_greeting", "codice_stats", "codice_continue" } },
-            { id = 2, modules = { "codice_favorites", "codice_shelf1" } },
-            { id = 3, modules = { "codice_shelf2", "codice_shelf3" } },
         } },
-        -- five covers to a row (the most the Simple UI allows) make the rows lower: two shelves fit on a page
-        settings = {
-            simpleui_hs_codice_favorites_grid_cols = 5,
-            simpleui_hs_codice_shelf1_grid_cols = 5,
-            simpleui_hs_codice_shelf2_grid_cols = 5,
-            simpleui_hs_codice_shelf3_grid_cols = 5,
-        },
+        settings = {},
     }
+end
+
+--- "15% lido" for a work that is being read (from 0 to 100, with decimals). A work with a little read says "1% lido", never "0%".
+function M.readLabel(percent)
+    percent = tonumber(percent) or 0
+    if percent <= 0 then return "" end
+    local n = math.floor(percent + 0.5)
+    if n < 1 then n = 1 end
+    if n > 100 then n = 100 end
+    return n .. "% lido"
+end
+
+--- How to fill a box of w x h with an image of sw x sh without distorting it and cutting what overflows (what the web calls object-fit: cover):
+--- the size the image is scaled to, and where the box starts inside it (the cut is even on both sides).
+function M.coverCrop(sw, sh, w, h)
+    local scale = math.max(w / sw, h / sh)
+    local nw, nh = math.max(w, math.ceil(sw * scale)), math.max(h, math.ceil(sh * scale))
+    return { w = nw, h = nh, x = math.floor((nw - w) / 2), y = math.floor((nh - h) / 2) }
+end
+
+--- The card of a work with the file that was chosen to open: everything the card had (cover, progress), and the file.
+function M.withFile(card, file)
+    local out = {}
+    for k, v in pairs(card) do out[k] = v end
+    out.fileId = file.id
+    out.format = file.format
+    return out
+end
+
+--- The home as it is after a book was read on this reader: that work comes first in "continue", with the percent where it stopped, before the
+--- server is asked (it is, a little later). A work only opened, with nothing read, does not enter: opening is not beginning. Returns the home
+--- (a new table) and whether anything changed.
+function M.touchContinue(home, card, percent)
+    if type(home) ~= "table" or type(card) ~= "table" or not card.id then return home, false end
+    local list = type(home.continue) == "table" and home.continue or {}
+    local found, rest = nil, {}
+    for _, c in ipairs(list) do
+        if c.id == card.id then found = c else rest[#rest + 1] = c end
+    end
+    percent = tonumber(percent)
+    if not found and (not percent or percent <= 0) then return home, false end
+    local moved = {}
+    for k, v in pairs(found or card) do moved[k] = v end
+    if found then
+        for k, v in pairs(card) do if moved[k] == nil then moved[k] = v end end
+    end
+    moved.key = nil
+    if percent and percent >= 0 then moved.percent = percent end
+    table.insert(rest, 1, moved)
+    local out = {}
+    for k, v in pairs(home) do out[k] = v end
+    out.continue = rest
+    return out, true
 end
 
 -- ---------------------------------------------------------------- files

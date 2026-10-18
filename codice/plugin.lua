@@ -20,6 +20,7 @@ local logger = require("logger")
 local md5 = require("ffi/sha2").md5
 
 local core = require("codice/core")
+local Data = require("codice/data")
 local api = require("codice/http")
 local Diag = require("codice/diag")
 local Pairing = require("codice/pairing")
@@ -313,6 +314,7 @@ function Codice:openBook(card, before)
     local path = self:booksDir() .. "/" .. core.bookFileName(card)
     local open = guarded("abrir o livro", function()
         if before then before() end
+        Data.noteOpening(path, card)
         require("apps/reader/readerui"):showReader(path)
     end)
     if lfs.attributes(path, "mode") == "file" and lfs.attributes(path, "size") > 0 then return open() end
@@ -352,7 +354,7 @@ function Codice:_chooseAndOpen(card, before)
         end
         local choices = core.fileChoices(data.files)
         if #choices == 1 then
-            return self:openBook({ id = card.id, title = card.title, fileId = choices[1].id, format = choices[1].format }, before)
+            return self:openBook(core.withFile(card, choices[1]), before)
         end
         local dialog
         local buttons = {}
@@ -361,7 +363,7 @@ function Codice:_chooseAndOpen(card, before)
                 text = choice.label,
                 callback = guarded("abrir o livro", function()
                     UIManager:close(dialog)
-                    self:openBook({ id = card.id, title = card.title, fileId = choice.id, format = choice.format }, before)
+                    self:openBook(core.withFile(card, choice), before)
                 end),
             }}
         end
@@ -401,6 +403,23 @@ function Codice:onReaderReady()
         local ok, err = pcall(self.checkFreshCopy, self)
         if not ok then logger.warn("codice: checking a fresh copy failed:", err) end
     end)
+end
+
+--- A book is being closed: the home of the Simple UI shows it first in "continue" when the person comes back to it, without waiting to ask.
+function Codice:onCloseDocument()
+    local ok, err = pcall(function()
+        local doc = self.ui.document
+        local path = doc and doc.file
+        if not path then return end
+        local fraction
+        if self.ui.kosync and self.ui.kosync.getLastPercent then fraction = self.ui.kosync:getLastPercent() end
+        if not fraction and self.ui.doc_settings then fraction = self.ui.doc_settings:readSetting("percent_finished") end
+        Data.afterReading(path, fraction and fraction * 100 or nil, function()
+            local Row = package.loaded["codice/modules/row"]
+            if Row then Row.redraw() end
+        end)
+    end)
+    if not ok then logger.warn("codice: after closing a book:", err) end
 end
 
 function Codice:checkUpdate(silent)
@@ -472,7 +491,7 @@ end
 --- unless the person saved it as a preset of the Simple UI).
 function Codice:applyHomePreset()
     UIManager:show(ConfirmBox:new{
-        text = "Montar a home do Códice?\n\nIsso troca os módulos da home do Simple UI por: saudação, números, continuar lendo, favoritos, uma nota e prateleiras, em três páginas.\n\nPara guardar a home atual, salve-a antes como predefinição no Simple UI.",
+        text = "Montar a home do Códice?\n\nIsso troca os módulos da home do Simple UI por uma página com saudação, números e continuar lendo.\n\nPara guardar a home atual, salve-a antes como predefinição no Simple UI.",
         ok_text = "Montar",
         ok_callback = guarded("montar a home", function()
             local Presets = require("features/sui_presets")

@@ -2,7 +2,7 @@
 The rows of works of the Simple UI home, from the Códice: "Continuar lendo", "Favoritos" and the shelves by category. Each row is a module made
 over the `GridRenderer.makeModule` of the Simple UI, as the Collections one is: every cell is a work of the server, not a file of the device.
 
-This file is the factory: `Row.make{ id, name, label, items }` gives a module, where `items(home, max)` picks the cards of the row from the last
+This file is the factory: `Row.make{ id, name, label, items, caption }` gives a module, where `items(home, max)` picks the cards of the row from the last
 home the server sent (`codice/core.lua` has the pure part). That home is kept in a file (`codice/data.lua`): the screen appears at once, with no
 network, and updates itself when a new one arrives. The covers come after the screen, a few at a time. Tapping a work opens it (downloading the
 file if it is not on the device yet, and asking which when there is more than one).
@@ -89,7 +89,7 @@ end
 -- the cell
 -- ---------------------------------------------------------------------------
 
-local function dims(cw)
+local function dims(cw, caption)
     local pad = Screen:scaleBySize(4)
     local w = math.max(10, cw - 2 * pad)
     local h = math.floor(w * 1.5)
@@ -97,22 +97,61 @@ local function dims(cw)
     local text_h = TextWidget:new{ text = "Ag", face = face }:getSize().h
     local bar_h = Screen:scaleBySize(5)
     local gap = Screen:scaleBySize(4)
+    if caption then
+        -- only the cover and, under it, how much is read
+        return { pad = pad, cover_w = w, cover_h = h, face = face, text_h = text_h, bar_h = 0, gap = gap,
+                 cell_h = h + gap + text_h + gap }
+    end
     return { pad = pad, cover_w = w, cover_h = h, face = face, text_h = text_h, bar_h = bar_h, gap = gap,
              cell_h = h + gap + bar_h + gap + text_h + gap }
 end
 
-local function cellHeight(cw)
-    return dims(cw).cell_h
+-- the covers already cut to the box, by file and size: drawing again does not read and scale the file again
+local crops, crop_order = {}, {}
+local MAX_CROPS = 16
+
+--- The cover at `path` filling a box of w x h without distortion, cutting what overflows (the box is always full). Nil when it cannot be done:
+--- the caller then draws the cover the plain way.
+local function croppedCover(path, w, h)
+    local key = path .. "|" .. w .. "x" .. h
+    if crops[key] then return crops[key] end
+    local ok, bb = pcall(function()
+        local RenderImage = require("ui/renderimage")
+        local Blitbuffer = require("ffi/blitbuffer")
+        local src = RenderImage:renderImageFile(path, false)
+        if not src then return nil end
+        local crop = core.coverCrop(src:getWidth(), src:getHeight(), w, h)
+        local scaled = RenderImage:scaleBlitBuffer(src, crop.w, crop.h, true)
+        local out = Blitbuffer.new(w, h, scaled:getType())
+        out:blitFrom(scaled, 0, 0, crop.x, crop.y, w, h)
+        if scaled ~= src then scaled:free() end
+        return out
+    end)
+    if not ok or not bb then
+        if not ok then require("logger").warn("codice: cutting a cover failed:", bb) end
+        return nil
+    end
+    crops[key] = bb
+    crop_order[#crop_order + 1] = key
+    if #crop_order > MAX_CROPS then
+        local old = table.remove(crop_order, 1)
+        if crops[old] then crops[old]:free(); crops[old] = nil end
+    end
+    return bb
 end
 
 local function coverWidget(d, card)
     local path = Covers.path(card)
     if Covers.kept(path) then
-        return FrameContainer:new{
-            bordersize = 1, padding = 0, margin = 0,
-            CenterContainer:new{ dimen = Geom:new{ w = d.cover_w - 2, h = d.cover_h - 2 },
-                ImageWidget:new{ file = path, width = d.cover_w - 2, height = d.cover_h - 2, scale_factor = 0 } },
-        }
+        local bb = croppedCover(path, d.cover_w - 2, d.cover_h - 2)
+        local image
+        if bb then
+            image = ImageWidget:new{ image = bb, image_disposable = false }
+        else
+            image = CenterContainer:new{ dimen = Geom:new{ w = d.cover_w - 2, h = d.cover_h - 2 },
+                ImageWidget:new{ file = path, width = d.cover_w - 2, height = d.cover_h - 2, scale_factor = 0 } }
+        end
+        return FrameContainer:new{ bordersize = 1, padding = 0, margin = 0, image }
     end
     -- no cover (yet): the stand-in of the Simple UI, with the title, the same one it draws for a book with no cover
     local SH = package.loaded["modules/module_books_shared"]
@@ -124,28 +163,42 @@ local function coverWidget(d, card)
         TextWidget:new{ text = tostring(card.title or "?"), face = d.face, max_width = d.cover_w - 4 } }
 end
 
-local function renderCell(by_key, key, cw, cell_h)
+local function renderCell(by_key, caption, key, cw, cell_h)
     local card = by_key[key]
     if not card then return VerticalSpan:new{ width = cell_h } end
-    local d = dims(cw)
-    local bar
-    if (card.percent or 0) > 0 then
-        bar = ProgressWidget:new{ width = d.cover_w, height = d.bar_h, percentage = math.min(1, card.percent / 100), margin_h = 0, margin_v = 0 }
+    local d = dims(cw, caption)
+    local content
+    if caption then
+        content = VerticalGroup:new{
+            align = "center",
+            VerticalSpan:new{ width = 0 },
+            coverWidget(d, card),
+            VerticalSpan:new{ width = d.gap },
+            UI.makeColoredText{
+                text = caption(card), face = d.face, fgcolor = UI.CLR_TEXT_SUB,
+                max_width = d.cover_w, truncate_with_ellipsis = true, alignment = "center",
+            },
+        }
     else
-        bar = VerticalSpan:new{ width = d.bar_h }
+        local bar
+        if (card.percent or 0) > 0 then
+            bar = ProgressWidget:new{ width = d.cover_w, height = d.bar_h, percentage = math.min(1, card.percent / 100), margin_h = 0, margin_v = 0 }
+        else
+            bar = VerticalSpan:new{ width = d.bar_h }
+        end
+        content = VerticalGroup:new{
+            align = "center",
+            VerticalSpan:new{ width = 0 },
+            coverWidget(d, card),
+            VerticalSpan:new{ width = d.gap },
+            bar,
+            VerticalSpan:new{ width = d.gap },
+            UI.makeColoredText{
+                text = tostring(card.title or "?"), face = d.face, fgcolor = UI.CLR_TEXT_SUB,
+                max_width = d.cover_w, truncate_with_ellipsis = true, alignment = "center",
+            },
+        }
     end
-    local content = VerticalGroup:new{
-        align = "center",
-        VerticalSpan:new{ width = 0 },
-        coverWidget(d, card),
-        VerticalSpan:new{ width = d.gap },
-        bar,
-        VerticalSpan:new{ width = d.gap },
-        UI.makeColoredText{
-            text = tostring(card.title or "?"), face = d.face, fgcolor = UI.CLR_TEXT_SUB,
-            max_width = d.cover_w, truncate_with_ellipsis = true, alignment = "center",
-        },
-    }
     local tappable = InputContainer:new{ dimen = Geom:new{ w = cw, h = cell_h }, [1] = content }
     tappable.ges_events = {
         TapCodice = { GestureRange:new{ ges = "tap", range = function() return tappable.dimen end } },
@@ -204,8 +257,8 @@ function Row.make(spec)
         paged       = false,
 
         getFileList   = listBooks,
-        renderCell    = function(key, cw, cell_h) return renderCell(by_key, key, cw, cell_h) end,
-        getCellHeight = cellHeight,
+        renderCell    = function(key, cw, cell_h) return renderCell(by_key, spec.caption, key, cw, cell_h) end,
+        getCellHeight = function(cw) return dims(cw, spec.caption).cell_h end,
 
         -- the progress is drawn by the cell itself
         progress_style = { locked = "none" },
