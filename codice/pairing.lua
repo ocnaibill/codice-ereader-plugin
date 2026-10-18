@@ -12,8 +12,8 @@ local QRMessage = require("ui/widget/qrmessage")
 local UIManager = require("ui/uimanager")
 local Screen = Device.screen
 
-local core = require("codice_core")
-local api = require("codice_http")
+local core = require("codice/core")
+local api = require("codice/http")
 
 local Pairing = {}
 

@@ -16,8 +16,8 @@ local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 local logger = require("logger")
 
-local core = require("codice_core")
-local api = require("codice_http")
+local core = require("codice/core")
+local api = require("codice/http")
 
 local Update = {}
 

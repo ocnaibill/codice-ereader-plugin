@@ -31,8 +31,8 @@ local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 local Screen = Device.screen
 
-local core = require("codice_core")
-local api = require("codice_http")
+local core = require("codice/core")
+local api = require("codice/http")
 
 local PER_LINE = 3
 local SHELF_LIMIT = 6 -- works of a shelf drawn here (two lines); the rest is in the catalog

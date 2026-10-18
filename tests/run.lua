@@ -1,8 +1,8 @@
--- Testes da lógica que não precisa do KOReader (plugins/codice.koplugin/codice_core.lua).
+-- Testes da lógica que não precisa do KOReader (codice/core.lua).
 -- Rodar na raiz do repositório:  luajit tests/run.lua   (ou lua tests/run.lua)
 
-package.path = "plugins/codice.koplugin/?.lua;" .. package.path
-local core = require("codice_core")
+package.path = "./?.lua;" .. package.path
+local core = require("codice/core")
 
 local failures, count = 0, 0
 local function eq(got, want, label)

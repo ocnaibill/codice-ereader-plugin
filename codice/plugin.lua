@@ -1,6 +1,10 @@
 --[[--
-Plugin do Códice para o KOReader: conecta o leitor a uma instância do Códice por um código aprovado no site e mantém no aparelho a
-configuração do catálogo (OPDS) e da sincronização de progresso (KOSync). Issue ocnaibill/codice#327, DEC-194.
+O Códice dentro do plugin: conecta o leitor a uma instância do Códice por um código aprovado no site e mantém no aparelho a configuração do
+catálogo (OPDS) e da sincronização de progresso (KOSync). Issue ocnaibill/codice#327, DEC-194.
+
+Este arquivo é um MÓDULO que o plugin que o carrega (o SimpleUI, no `main.lua`) registra em cada tela principal do KOReader (o gerenciador
+de arquivos e o leitor): `require("codice/plugin").install(self.ui)`. O módulo ouve os eventos, põe o menu "Códice" e abre a tela antiga do
+Códice. Fica separado do código do SimpleUI para que as atualizações dele entrem sem conflito.
 ]]--
 
 local ButtonDialog = require("ui/widget/buttondialog")
@@ -15,12 +19,12 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 local md5 = require("ffi/sha2").md5
 
-local core = require("codice_core")
-local api = require("codice_http")
-local Diag = require("codice_diag")
-local Pairing = require("codice_pairing")
-local Home = require("codice_home")
-local Update = require("codice_update")
+local core = require("codice/core")
+local api = require("codice/http")
+local Diag = require("codice/diag")
+local Pairing = require("codice/pairing")
+local Home = require("codice/home")
+local Update = require("codice/update")
 local lfs = require("libs/libkoreader-lfs")
 local ltn12 = require("ltn12")
 local util = require("util")
@@ -36,8 +40,9 @@ local Codice = WidgetContainer:extend{
 function Codice:init()
     self.settings_file = DataStorage:getSettingsDir() .. "/codice.lua"
     self.ui.menu:registerToMainMenu(self)
-    -- The Códice is the first screen: when KOReader starts and every time a book is closed (the file manager is made again then), the home
-    -- opens over it. From the home, "Arquivos do KOReader" goes to the files.
+    -- The first screen of the plugin is the home of the SimpleUI (which starts the reader on it and takes it back when a book is closed).
+    -- This older screen of the Códice stays for whoever asks for it: when it is turned on, it opens over the file manager at the start and
+    -- every time a book is closed.
     if self.ui.name ~= "ReaderUI" and not self.ui.document and self:connection() and self:autostart() then
         UIManager:nextTick(function()
             local ok, err = pcall(self.showHome, self, nil, true)
@@ -46,9 +51,9 @@ function Codice:init()
     end
 end
 
---- Whether the home opens by itself (on unless the person turned it off).
+--- Whether the older home of the Códice opens by itself (off unless the person turned it on: the SimpleUI has the first screen).
 function Codice:autostart()
-    return self:store():readSetting("autostart") ~= false
+    return self:store():readSetting("autostart") == true
 end
 
 function Codice:setAutostart(on)
@@ -413,7 +418,7 @@ function Codice:addToMainMenu(menu_items)
                 callback = function() self:showHome() end,
             },
             {
-                text_func = function() return self:autostart() and "Abrir o Códice ao iniciar: sim" or "Abrir o Códice ao iniciar: não" end,
+                text_func = function() return self:autostart() and "Abrir a tela antiga do Códice ao iniciar: sim" or "Abrir a tela antiga do Códice ao iniciar: não" end,
                 keep_menu_open = true,
                 enabled_func = function() return self:connection() ~= nil end,
                 callback = function(touchmenu_instance)
@@ -465,4 +470,25 @@ function Codice:onAnnotationsModified(items)
     Diag.onAnnotationsModified(self, items)
 end
 
-return Codice
+local M = { Codice = Codice }
+
+--- Starts the Códice for a main screen of KOReader (the file manager or the reader) and registers it there as a module, so that it is
+--- given the events and the menu. Safe to call twice for the same screen.
+function M.install(ui)
+    if ui.codice then return ui.codice end
+    local ok, instance = pcall(Codice.new, Codice, { ui = ui })
+    if not ok then
+        logger.err("codice: could not start:", instance)
+        return nil
+    end
+    ui:registerModule("codice", instance)
+    M.live = instance
+    return instance
+end
+
+--- Looks for a newer version of the plugin now (for the menu of the SimpleUI).
+function M.checkUpdateNow()
+    if M.live then M.live:checkUpdate(false) end
+end
+
+return M
