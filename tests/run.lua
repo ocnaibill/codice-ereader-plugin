@@ -3,6 +3,7 @@
 
 package.path = "./?.lua;" .. package.path
 local core = require("codice/core")
+local Shelf = require("codice/shelf")
 
 local failures, count = 0, 0
 local function eq(got, want, label)
@@ -342,6 +343,111 @@ eq(ch4, false, "abrir sem ler não entra"); eq(#h4.continue, 3, "a lista fica")
 local h5 = core.touchContinue(base, { id = 2, title = "B" }, nil)
 eq(h5.continue[1].id, 2, "sem percentual, só sobe"); eq(h5.continue[1].percent, 50, "mantém o que tinha")
 eq(select(2, core.touchContinue(nil, { id = 1 }, 5)), false, "sem home")
+
+-- a prateleira (o que o leitor guarda dos livros que tem)
+eq(Shelf.fold("Stanisław Lem"), "stanislaw lem", "sem acento nem maiúscula")
+eq(Shelf.fold("Ação & Emoção"), "acao & emocao", "acentos do português")
+eq(Shelf.letter("Álvaro"), "A", "letra sem acento")
+eq(Shelf.letter("  zé"), "Z", "tira espaços")
+eq(Shelf.letter("1984"), "#", "número vai para #")
+
+local function work(id, title, author, extra)
+    local w = { id = id, title = title, author = author, authors = { { id = id * 10, name = author } }, cover = "/c/" .. id, percent = 0,
+        categories = {}, files = { { id = id * 100, format = "epub", primary = true } }, favorite = false, inProgress = false, completed = false }
+    for k, v in pairs(extra or {}) do w[k] = v end
+    return w
+end
+local idx = Shelf.new()
+local fiction = { id = 1, name = "Ficção" }
+local scifi = { id = 2, name = "Ficção científica", parentId = 1 }
+local horror = { id = 3, name = "Terror", parentId = 1 }
+local nonfic = { id = 4, name = "Não ficção" }
+Shelf.noteDownload(idx, work(1, "Duna", "Frank Herbert", { categories = { fiction, scifi }, series = "Duna", favorite = true, inProgress = true, percent = 42 }), 100, "100 - Duna.epub", 900, 1)
+Shelf.noteDownload(idx, work(2, "Solaris", "Stanisław Lem", { categories = { fiction, scifi } }), 200, "200 - Solaris.epub", 700, 1)
+Shelf.noteDownload(idx, work(3, "O Iluminado", "Stephen King", { categories = { fiction, horror }, completed = true }), 300, "300 - O Iluminado.epub", 800, 1)
+Shelf.noteDownload(idx, work(4, "Sapiens", "Yuval Harari", { categories = { nonfic }, files = { { id = 400, format = "pdf", primary = true }, { id = 401, format = "epub" } } }), 400, "400 - Sapiens.pdf", 5000, 1)
+local t = function(cards) local o = {} for _, c in ipairs(cards) do o[#o + 1] = c.title end return table.concat(o, "|") end
+
+eq(select(1, Shelf.totals(idx)), 4, "quatro obras no aparelho")
+eq(select(2, Shelf.totals(idx)), 7400, "bytes dos arquivos")
+eq(t(Shelf.list(idx)), "Duna|O Iluminado|Sapiens|Solaris", "por título, sem acento")
+eq(t(Shelf.list(idx, { sort = "author" })), "Duna|Solaris|O Iluminado|Sapiens", "por autor")
+eq(t(Shelf.list(idx, { sort = "recent" })), "Sapiens|O Iluminado|Solaris|Duna", "mais novas primeiro")
+eq(t(Shelf.list(idx, { category = 1 })), "Duna|O Iluminado|Solaris", "a categoria de cima conta as de baixo")
+eq(t(Shelf.list(idx, { category = 2 })), "Duna|Solaris", "a categoria de baixo")
+eq(t(Shelf.list(idx, { author = 20 })), "Solaris", "por autor (id)")
+eq(t(Shelf.list(idx, { series = "Duna" })), "Duna", "por série")
+eq(t(Shelf.list(idx, { favorite = true })), "Duna", "favoritos")
+eq(t(Shelf.list(idx, { state = "reading" })), "Duna", "lendo")
+eq(t(Shelf.list(idx, { state = "finished" })), "O Iluminado", "concluídas")
+eq(t(Shelf.list(idx, { state = "unread" })), "Sapiens|Solaris", "não lidas")
+eq(t(Shelf.list(idx, { format = "pdf" })), "Sapiens", "por formato do arquivo que está no aparelho")
+eq(t(Shelf.list(idx, { search = "stanislaw" })), "Solaris", "busca sem acento")
+eq(t(Shelf.list(idx, { search = "ILUMIN king" })), "O Iluminado", "busca por título e autor, várias palavras")
+eq(t(Shelf.list(idx, { search = "nada disso" })), "", "busca sem resultado")
+eq(t(Shelf.list(idx, { category = 1, favorite = true })), "Duna", "filtros juntos")
+
+local card = Shelf.list(idx, { search = "sapiens" })[1]
+eq(card.fileId, 400, "o arquivo que está no aparelho"); eq(card.format, "pdf", "o formato dele"); eq(card.downloaded, true, "marcada como baixada"); eq(card.key, "codice:4", "a chave")
+eq(Shelf.list(idx, { search = "duna" })[1].percent, 42, "o progresso vem junto")
+
+local cats = Shelf.categories(idx)
+eq(#cats, 2, "duas categorias de cima"); eq(cats[1].name, "Ficção", "em ordem"); eq(cats[1].count, 3, "com a contagem do aparelho"); eq(cats[2].name, "Não ficção", "a outra")
+local sub = Shelf.categories(idx, 1)
+eq(#sub, 2, "duas dentro de Ficção"); eq(sub[1].name, "Ficção científica", "científica primeiro"); eq(sub[1].count, 2, "duas obras"); eq(sub[2].name, "Terror", "terror"); eq(sub[2].count, 1, "uma obra")
+eq(#Shelf.categories(idx, 4), 0, "categoria sem filhas")
+local authors = Shelf.authors(idx)
+eq(#authors, 4, "quatro autores"); eq(authors[1].name, "Frank Herbert", "ordem alfabética"); eq(authors[2].name, "Stanisław Lem", "Lem depois de Herbert, sem o acento atrapalhar")
+eq(#Shelf.series(idx), 1, "uma série"); eq(Shelf.series(idx)[1].name, "Duna", "a série")
+local fm = Shelf.formats(idx)
+eq(#fm, 2, "dois formatos"); eq(fm[1].format, "epub", "epub"); eq(fm[1].count, 3, "três obras em epub"); eq(fm[2].format, "pdf", "pdf"); eq(fm[2].count, 1, "uma em pdf")
+
+local pg = Shelf.page(Shelf.list(idx), 1, 3)
+eq(#pg.items, 3, "três por página"); eq(pg.pages, 2, "duas páginas"); eq(pg.total, 4, "quatro no total")
+eq(Shelf.page(Shelf.list(idx), 2, 3).items[1].title, "Solaris", "a segunda página")
+eq(Shelf.page(Shelf.list(idx), 99, 3).page, 2, "página além do fim vira a última")
+eq(Shelf.page(Shelf.list(idx), -4, 3).page, 1, "página negativa vira a primeira")
+eq(Shelf.page({}, 1, 3).pages, 1, "lista vazia tem uma página")
+
+-- o arquivo e o que sobrou
+eq(Shelf.has(idx, 300), true, "o arquivo está na prateleira"); eq(Shelf.has(idx, 999), false, "outro não")
+eq(select(1, Shelf.findFile(idx, 100)).title, "Duna", "de que obra é o arquivo")
+local gone = Shelf.prune(idx, function(name) return name ~= "300 - O Iluminado.epub" end)
+eq(gone, 1, "uma obra saiu: o arquivo foi apagado do aparelho"); eq(Shelf.has(idx, 300), false, "e some da prateleira"); eq(select(1, Shelf.totals(idx)), 3, "três ficam")
+
+-- um segundo arquivo da mesma obra, e o que o servidor diz depois
+Shelf.noteDownload(idx, work(4, "Sapiens", "Yuval Noah Harari", { categories = { nonfic } , files = { { id = 400, format = "pdf", primary = true }, { id = 401, format = "epub" } } }), 401, "401 - Sapiens.epub", 1000, 2)
+eq(select(1, Shelf.totals(idx)), 3, "a mesma obra, dois arquivos: continua uma"); eq(select(2, Shelf.totals(idx)), 7400 - 800 + 1000 - 0, "mas os bytes dos dois")
+eq(Shelf.list(idx, { search = "sapiens" })[1].fileCount, 2, "a obra tem dois arquivos aqui")
+eq(Shelf.has(idx, 400) and Shelf.has(idx, 401), true, "os dois arquivos estão na prateleira")
+local changed = Shelf.merge(idx, { works = { work(1, "Duna", "Frank Herbert", { favorite = false, percent = 80, inProgress = true, categories = { fiction, scifi } }), work(77, "Outra", "X") }, missing = { 2 } })
+eq(changed, true, "o servidor mudou coisas")
+eq(Shelf.list(idx, { search = "duna" })[1].percent, 80, "o progresso novo"); eq(Shelf.list(idx, { favorite = true })[1], nil, "deixou de ser favorita")
+eq(Shelf.has(idx, 100), true, "o arquivo continua no aparelho depois de atualizar")
+eq(Shelf.has(idx, 200), false, "obra que o servidor não conhece mais é esquecida")
+eq(Shelf.findFile(idx, 77), nil, "o servidor não põe na prateleira obra que não está no aparelho")
+eq(Shelf.merge(idx, { works = {}, missing = {} }), false, "nada mudou")
+local ids = Shelf.ids(idx)
+eq(table.concat(ids, ","), "1,4", "ids em ordem")
+local ch = Shelf.chunks({ 1, 2, 3, 4, 5 }, 2)
+eq(#ch, 3, "três partes"); eq(#ch[3], 1, "a última com um só"); eq(#Shelf.chunks({}, 2), 0, "nada em partes")
+eq(Shelf.sane(nil).version, 1, "sem arquivo, prateleira nova"); eq(Shelf.sane({ version = 0 }).version, 1, "versão desconhecida, nova"); eq(Shelf.sane(idx), idx, "prateleira boa fica")
+local fromCard = Shelf.workFromCard({ id = 9, title = "Cartão", author = "Alguém", fileId = 900, format = "epub", percent = 5 })
+eq(fromCard.files[1].id, 900, "do cartão, o arquivo"); eq(#fromCard.categories, 0, "sem categorias até o servidor dizer")
+
+-- a conexão e o aviso da biblioteca
+eq(core.connectivity(true, nil, 1000), "online", "com rede e sem chamada: online")
+eq(core.connectivity(true, { ok = true, at = 990 }, 1000), "online", "última chamada deu certo")
+eq(core.connectivity(false, { ok = true, at = 990 }, 1000), "wifi_off", "sem rede, mesmo que a última tenha dado certo")
+eq(core.connectivity(true, { ok = false, at = 990 }, 1000), "server_down", "a chamada de agora há pouco falhou")
+eq(core.connectivity(true, { ok = false, at = 100 }, 1000), "online", "falha antiga: tenta de novo")
+eq(core.connectivity(false, { ok = false, at = 990 }, 1000), "wifi_off", "sem rede é o primeiro motivo")
+local fmtDate = function(t) return "16/10" end
+eq(core.offlineNotice("online", 5, fmtDate), nil, "online não avisa")
+eq(core.offlineNotice("wifi_off", 5, fmtDate), "Sem conexão: mostrando só o que está no aparelho. Atualizado em 16/10.", "sem rede")
+eq(core.offlineNotice("server_down", 5, fmtDate), "Servidor não responde: mostrando só o que está no aparelho. Atualizado em 16/10.", "servidor fora")
+eq(core.offlineNotice("wifi_off", nil, fmtDate), "Sem conexão: mostrando só o que está no aparelho.", "sem data de atualização")
+eq(core.offlineNotice("wifi_off", 0, fmtDate), "Sem conexão: mostrando só o que está no aparelho.", "data zero é nenhuma")
 
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

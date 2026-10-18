@@ -57,6 +57,8 @@ function M.request(url, opts)
         sink = opts.sink or socketutil.table_sink(chunks),
     })
     socketutil:reset_timeout()
+    -- what the last call says about the server: any answer that is not a failure of the server (or of the proxy in front of it) says it is there
+    M.last_contact = { ok = type(code) == "number" and code < 500, at = os.time() }
     if type(code) ~= "number" then return nil, tostring(code or status) end
     if opts.raw then return code, table.concat(chunks), response_headers end
     return code, decode(table.concat(chunks)), response_headers
