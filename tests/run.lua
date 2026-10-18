@@ -534,6 +534,33 @@ eq(Libview.seriesSheet({ collection = { name = "X", publisher = "" }, works = {}
 local pc = Libview.workCard({ id = 9, title = "Berserk 3", collapsed = { collectionId = 4, name = "Berserk", volumes = 3, publisher = "Panini" } })
 eq(pc.publisher, "Panini", "o cartão da série guarda a editora"); eq(pc.subtitle, "Panini · 3 volumes", "a editora vem antes das contas")
 eq(Libview.workCard({ id = 9, title = "x", collapsed = { collectionId = 4, name = "Y", volumes = 1 } }).publisher, nil, "sem editora no cartão")
+-- the story of a series (DEC-202): the order, the loose chapters folded under the volume, the dividers, the stretches no file contains
+local sw = {
+    { id = 1, title = "Cap 1", unit = "chapter", position = 1, available = true, volumeNumber = 1, completed = true },
+    { id = 2, title = "Cap 2", unit = "chapter", position = 2, available = true, volumeNumber = 1 },
+    { id = 30, title = "Vol 1", unit = "volume", position = 1, available = true, coversFrom = 1, coversTo = 2 },
+    { id = 8, title = "Cap 8", unit = "chapter", position = 8, available = true, volumeNumber = 2 },
+    { id = 50, title = "Vol 9", unit = "volume", position = 9, available = true },
+}
+local st = Libview.seriesSheet({ collection = { name = "Berserk" }, works = sw, continue = { id = 2, title = "Cap 2", unit = "chapter", position = 2 },
+    story = { ranged = true, order = { 30, 8 }, nested = { ["30"] = { 1, 2 } }, unplaced = { 50 }, gaps = { { from = 3, to = 7 } }, chapters = 3, read = 2 } }, nil)
+local kinds = {}
+for _, r in ipairs(st.rows) do kinds[#kinds + 1] = r.divider and ("D:" .. r.divider.heading) or (r.gap and ("G:" .. r.gap) or ("W:" .. r.id)) end
+eq(table.concat(kinds, ","), "D:Volume 1,W:30,G:faltam os caps 3 a 7,D:Volume 2,W:8,D:Sem lugar na história,W:50", "a ordem da história, com divisores, buracos e obras sem lugar")
+eq(st.rows[1].divider.note, "caps 1 a 2 · 2 capítulos", "o divisor diz a faixa e quantos capítulos")
+eq(st.rows[2].title, "caps 1 a 2 (+2 avulsos)", "o volume diz o que reúne e quantos avulsos estão nele")
+eq(st.subtitle, "3 capítulos · 2 lidos", "o lido é por conteúdo")
+eq(st.go_on.id, 2, "o continuar vem do servidor")
+-- no range anywhere and no volume or arc said: the sheet is what it was
+local plain = Libview.seriesSheet({ collection = { name = "Uma" }, works = { { id = 1, title = "A", unit = "chapter", position = 1, available = true } },
+    story = { ranged = false, order = { 1 }, nested = {}, unplaced = {}, gaps = {} } }, nil)
+eq(#plain.rows, 1, "sem faixa nem volume, nada de divisor"); eq(plain.rows[1].divider, nil, "e a primeira linha é a obra")
+-- chapters that only say their volume read in the order of the story too, with the dividers made of them
+local marked = Libview.seriesSheet({ collection = { name = "M" }, works = { { id = 1, title = "A", unit = "chapter", position = 1, available = true, volumeNumber = 1 },
+    { id = 2, title = "B", unit = "chapter", position = 2, available = true, volumeNumber = 2 } }, story = { ranged = false, order = { 1, 2 }, nested = {}, unplaced = {}, gaps = {} } }, nil)
+eq(#marked.rows, 4, "dois divisores e duas obras"); eq(marked.rows[3].divider.heading, "Volume 2", "o segundo volume")
+eq(Libview.markOf({ unit = "volume", position = 4 }, "volume"), 4, "o volume é o seu próprio"); eq(Libview.markOf({ unit = "extra", volumeNumber = 1 }, "volume"), nil, "a complementar não tem marca")
+eq(Libview.markOfSeries({ { unit = "chapter", storyArc = "Eclipse", available = true } }), "arc", "o arco, se não há volume")
 local ss2 = Libview.seriesSheet({ collection = { name = "Mista" }, works = { { id = 1, title = "A", unit = "volume", position = 1, available = true }, { id = 2, title = "B", unit = "chapter", position = 1, available = true } } }, nil)
 eq(ss2.subtitle, "2 obras", "unidades misturadas: obras"); eq(ss2.heading, "OBRAS", "título"); eq(ss2.go_on, nil, "sem passo, sem botão")
 local ss3 = Libview.seriesSheet({ collection = { name = "Uma" }, works = { { id = 99, title = "A", unit = "volume", position = 1, available = true } } }, shelfIdx)
