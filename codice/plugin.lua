@@ -472,10 +472,41 @@ end
 
 local M = { Codice = Codice }
 
+--- The original Simple UI, installed next to this plugin, loads the same modules (`infra/sui_*`, `screens/...`) and the two would step on each
+--- other: this plugin already holds all of it. If it is installed and on, it is turned off and the person is told to restart.
+local function turnOffTheOriginalSimpleUI()
+    local disabled = G_reader_settings and G_reader_settings:readSetting("plugins_disabled")
+    if type(disabled) ~= "table" then disabled = {} end
+    if disabled["simpleui"] ~= nil then return end
+    local paths = { "plugins" }
+    local extra = G_reader_settings and G_reader_settings:readSetting("extra_plugin_paths")
+    if type(extra) == "string" then extra = { extra } end
+    for _, path in ipairs(type(extra) == "table" and extra or {}) do paths[#paths + 1] = path end
+    for _, path in ipairs(paths) do
+        if type(path) == "string" and lfs.attributes(path:gsub("/+$", "") .. "/simpleui.koplugin", "mode") == "directory" then
+            disabled["simpleui"] = true
+            G_reader_settings:saveSetting("plugins_disabled", disabled)
+            G_reader_settings:flush()
+            UIManager:scheduleIn(1, function()
+                UIManager:show(ConfirmBox:new{
+                    text = "O Simple UI original foi desligado: este plugin já traz tudo dele.\n\nReinicie o KOReader para valer.",
+                    ok_text = "Reiniciar agora",
+                    ok_callback = function() UIManager:broadcastEvent(require("ui/event"):new("Restart")) end,
+                })
+            end)
+            return
+        end
+    end
+end
+
 --- Starts the Códice for a main screen of KOReader (the file manager or the reader) and registers it there as a module, so that it is
 --- given the events and the menu. Safe to call twice for the same screen.
 function M.install(ui)
     if ui.codice then return ui.codice end
+    if not M._compat_done then
+        M._compat_done = true
+        pcall(turnOffTheOriginalSimpleUI)
+    end
     local ok, instance = pcall(Codice.new, Codice, { ui = ui })
     if not ok then
         logger.err("codice: could not start:", instance)

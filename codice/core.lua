@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.3.1"
+M.PLUGIN_VERSION = "0.4.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
