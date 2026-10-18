@@ -120,3 +120,7 @@ A tela de bloqueio do KOReader mostra a capa de uma das obras baixadas do Códic
 - Ao fechar um livro aberto pela Biblioteca, a Biblioteca volta para onde você estava (a mesma página da série, da lista...).
 - Em listas de até três obras (Favoritos com poucos, por exemplo), as capas usam a largura toda.
 - Depois de uma atualização, o aviso diz "Códice atualizado neste Kindle para a versão X.Y.Z".
+
+### A primeira vez
+
+Instalado o plugin, a primeira abertura do KOReader mostra **Bem-vindo ao Códice** (uma vez): você digita o endereço da instância, o leitor mostra o **código** em tamanho grande (e um QR, se quiser), você o aprova no site (Minha conta → Aplicativos → Conectar um leitor), e o leitor percebe sozinho. Ao conectar, o catálogo e a sincronização ficam configurados e o Acervo abre montado: saudação, "Em andamento" e "Sua atividade", e "Continuar lendo", com a barra de abas do Códice. A janela de boas-vindas do Simple UI (em inglês, com layouts que não são os do Códice) não aparece mais. O plugin procura sozinho uma versão nova (no máximo uma vez por dia, quando há rede) e **pergunta se quer atualizar**, uma vez para cada versão; em Códice → Procurar atualização dá para ver na hora.

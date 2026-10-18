@@ -45,7 +45,7 @@ local function guarded(what, fn)
 end
 
 local SYNC_EVERY = 6 * 3600 -- the configuration is asked again at most this often, when the network comes back
-local UPDATE_EVERY = 7 * 24 * 3600 -- and a newer plugin is looked for at most this often
+local UPDATE_EVERY = 24 * 3600 -- and a newer plugin is looked for at most this often (and the person is asked once for each version)
 
 local Codice = WidgetContainer:extend{
     name = "codice",
@@ -185,7 +185,7 @@ function Codice:onPaired(url, data)
         end
     end
     if self:applyConfig(data.config) then
-        self:say((mounted and "A home do Códice foi montada.\n" or "") .. "Conectado ao Códice como " .. tostring(data.username) .. ".\nO catálogo e a sincronização já estão configurados. Se você já abriu um livro nesta sessão, reinicie o KOReader uma vez.")
+        self:say(core.pairedNotice(data.username, mounted, self.ui.document ~= nil))
     end
 end
 
@@ -616,6 +616,13 @@ function Codice:mountHome()
         if HS and HS.rebuildLayout then HS.rebuildLayout() end
         local SE = package.loaded["engines/sui_screen_engine"]
         if SE and SE.refreshAllLiveImmediate then SE.refreshAllLiveImmediate(true) end
+        -- the home is shown (a reader just connected is on the file browser): what was mounted is what the person sees
+        pcall(function()
+            local open_id = require("infra/sui_core").getOpenScreen()
+            if open_id then return end
+            local FM = package.loaded["apps/filemanager/filemanager"]
+            require("features/sui_quickactions").execute("homescreen", { fm = FM and FM.instance })
+        end)
     end)
 end
 

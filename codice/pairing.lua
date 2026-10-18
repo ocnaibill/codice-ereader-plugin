@@ -102,24 +102,16 @@ function Pairing.wait(plugin, url, answer)
         if dialog then UIManager:close(dialog) end
     end
 
-    dialog = ButtonDialog:new{
-        title = "Conectar ao Códice\n\nNo site, entre em Minha conta → Aplicativos → Conectar um leitor e digite o código:\n\n"
-            .. tostring(answer.userCode) .. "\n\nO código vale 10 minutos. Esperando a aprovação…",
-        title_align = "center",
-        tap_close_callback = finish,
-        buttons = {{
-            {
-                text = "Mostrar QR",
-                callback = function()
-                    UIManager:show(QRMessage:new{
-                        text = answer.verificationUriComplete,
-                        width = Screen:getWidth() * 0.8,
-                        height = Screen:getWidth() * 0.8,
-                    })
-                end,
-            },
-            { text = "Cancelar", callback = finish },
-        }},
+    dialog = require("codice/paircode"):new{
+        code = tostring(answer.userCode),
+        on_qr = function()
+            UIManager:show(QRMessage:new{
+                text = answer.verificationUriComplete,
+                width = Screen:getWidth() * 0.8,
+                height = Screen:getWidth() * 0.8,
+            })
+        end,
+        on_cancel = finish,
     }
     UIManager:show(dialog)
 

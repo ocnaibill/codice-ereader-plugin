@@ -130,7 +130,17 @@ function Update.check(plugin, silent)
             return
         end
         if silent then
-            Notification:notify("Há uma atualização do plugin do Códice (" .. pick.version .. "). Veja em Códice → Procurar atualização.")
+            -- found by itself: the person is asked, once for each version (they can still look in Códice → Procurar atualização)
+            local store = plugin:store()
+            if store:readSetting("update_offered") == pick.version then return end
+            store:saveSetting("update_offered", pick.version)
+            store:flush()
+            UIManager:show(ConfirmBox:new{
+                text = "Há uma atualização do Códice: a versão " .. pick.version .. " (esta é a " .. core.PLUGIN_VERSION .. ").\n\nAtualizar agora? O KOReader precisa reiniciar depois, e a versão atual fica guardada para voltar atrás.",
+                ok_text = "Atualizar",
+                cancel_text = "Depois",
+                ok_callback = function() Update.install(plugin, pick) end,
+            })
             return
         end
         UIManager:show(ConfirmBox:new{
