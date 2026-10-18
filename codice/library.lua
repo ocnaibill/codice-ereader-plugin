@@ -46,13 +46,15 @@ local COVERS_PER_STEP = 2
 
 local Library = InputContainer:extend{
     name = "codice_library",
+    covers_fullscreen = true, -- the Simple UI puts its bars around the widgets that say so (and are registered with it)
     plugin = nil, -- the plugin: it holds the connection and opens books
 }
 
 -- ---------------------------------------------------------------- measures and pieces
 
-local function measures()
-    local w, h = Screen:getWidth(), Screen:getHeight()
+local function measures(h)
+    local w = Screen:getWidth()
+    h = h or Screen:getHeight()
     local m = {
         w = w, h = h,
         margin = Screen:scaleBySize(14),
@@ -66,6 +68,7 @@ local function measures()
     m.card_w = math.floor((m.content_w - (COLS - 1) * m.gap) / COLS)
     m.cover_h = math.floor(m.card_w * 1.5)
     m.row_h = Screen:scaleBySize(64)
+    m.note_h = Screen:scaleBySize(150) -- a note in the list of notes: the passage over three lines, and where it is from
     return m
 end
 
@@ -163,6 +166,7 @@ function Library:modelRoot()
     for _, r in ipairs(Libview.rootRows(works, bytes)) do
         rows[#rows + 1] = { title = r.title, detail = r.detail, go = function() self:push(r.id) end }
     end
+    rows[#rows + 1] = { title = "Mais", go = function() self:push("more") end }
     return { kind = "list", title = "Biblioteca", rows = rows, search = true, notice = self:notice(not self:online()) }
 end
 
@@ -367,9 +371,55 @@ function Library:modelWorks(view)
         cards, page, pages = pg.items, pg.page, pg.pages
     end
     local chips
-    if not spec.downloaded then chips = Libview.CHIPS end
+    if not (spec.downloaded or spec.inProgress or spec.favorite) then chips = Libview.CHIPS end
     return { kind = "grid", title = Libview.listTitle(spec), cards = cards, page = page, pages = pages, chips = chips, chip = chip, search = true, sort = true,
              notice = self:notice(offline), empty = chip == "downloaded" and "Nenhuma obra no aparelho aqui." or "Nenhuma obra." }
+end
+
+--- The notes and highlights of the person, newest first, as many as fit the screen.
+function Library:modelNotes(view)
+    local m = self.m
+    local per = math.max(2, math.floor((m.h - m.header_h - m.notice_h - m.foot_h - m.gap) / (m.note_h + Screen:scaleBySize(1))))
+    local offline = not self:online()
+    local rows, page, pages = {}, view.page or 1, 1
+    if not offline then
+        local code, data = self:get("/device/notes", { limit = per, offset = (page - 1) * per })
+        if code == 200 and type(data) == "table" and type(data.data) == "table" then
+            for _, n in ipairs(data.data) do
+                local quote = n.quote
+                if type(quote) ~= "string" or quote == "" then quote = n.body end
+                if type(quote) == "string" and quote:match("%S") then
+                    local work_id = type(n.workId) == "number" and n.workId or nil
+                    rows[#rows + 1] = { multiline = true, body = quote, source = (n.workTitle or "") .. ((n.workAuthor and n.workAuthor ~= "") and (" · " .. n.workAuthor) or ""),
+                        go = function()
+                            if work_id then self:push("detail", { card = { id = work_id, title = n.workTitle, author = n.workAuthor, fileCount = 2 } }) end
+                        end }
+                end
+            end
+            pages = math.max(1, math.ceil((tonumber(data.total) or #rows) / per))
+        else
+            offline = true
+        end
+    end
+    return { kind = "list", title = view.title or "Anotações", rows = rows, page = page, pages = pages, notice = self:notice(offline),
+             empty = offline and "As anotações precisam de conexão." or "Nenhuma anotação ainda." }
+end
+
+--- What is not a screen of the library: the files of KOReader, the settings, the power menu.
+function Library:modelMore(view)
+    local function action(id)
+        return function()
+            local QA = require("features/sui_quickactions")
+            QA.execute(id, { plugin = self.plugin, fm = package.loaded["apps/filemanager/filemanager"] and package.loaded["apps/filemanager/filemanager"].instance })
+        end
+    end
+    local rows = {
+        { title = "Arquivos do KOReader", go = function() UIManager:close(self); action("home")() end },
+        { title = "Configurações", go = function() UIManager:close(self); action("sui_settings")() end },
+        { title = "Energia", go = action("power") },
+        { title = "Atualizar o plugin", go = function() self.plugin:checkUpdate(false) end },
+    }
+    return { kind = "list", title = view.title or "Mais", rows = rows, page = 1, pages = 1 }
 end
 
 --- The works of a collection.
@@ -422,7 +472,7 @@ end
 
 function Library:back()
     if #self.stack <= 1 then
-        UIManager:close(self)
+        if not self._navbar_injected then UIManager:close(self) end
         return
     end
     table.remove(self.stack)
@@ -431,7 +481,7 @@ end
 
 local MODELS = {
     root = "modelRoot", categories = "modelCategories", people = "modelPeople", collections = "modelCollections", formats = "modelFormats",
-    works = "modelWorks", collection = "modelCollection", detail = "modelDetail",
+    works = "modelWorks", collection = "modelCollection", detail = "modelDetail", notes = "modelNotes", more = "modelMore",
 }
 
 --- The entries of the root that open a list of works lead to it from here.
@@ -472,7 +522,15 @@ end
 --- The header: back, the title, and the search and order.
 function Library:header(m, model)
     -- words, not symbols: not every font has the glyph of a magnifier or of two arrows
-    local back = text(#self.stack > 1 and "‹ Voltar" or "Fechar", 22, { bold = true })
+    -- (the root of a tab has no way back: the bar of tabs is the way out)
+    local back
+    if #self.stack > 1 then
+        back = text("‹ Voltar", 22, { bold = true })
+    elseif not self._navbar_injected then
+        back = text("Fechar", 22, { bold = true })
+    else
+        back = text("", 22, { bold = true })
+    end
     local right = {}
     if model.sort then right[#right + 1] = { label = "Ordem", id = "sort" } end
     if model.search then right[#right + 1] = { label = "Buscar", id = "search" } end
@@ -572,6 +630,16 @@ function Library:listBody(m, model, top)
         return group, y + m.gap * 2 + m.row_h
     end
     for _, row in ipairs(model.rows) do
+      if row.multiline then
+        local body = TextBoxWidget:new{ text = "“" .. row.body .. "”", face = face(19), width = m.content_w, height = Screen:scaleBySize(86),
+            height_adjust = true, height_overflow_show_ellipsis = true }
+        local source = text(row.source, 16, { gray = true, max_width = m.content_w })
+        group[#group + 1] = CenterContainer:new{ dimen = Geom:new{ w = m.w, h = m.note_h }, HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin },
+            VerticalGroup:new{ align = "left", body, VerticalSpan:new{ width = Screen:scaleBySize(6) }, source } } }
+        group[#group + 1] = rule(m.w)
+        self.hits[#self.hits + 1] = { x = 0, y = y, w = m.w, h = m.note_h, fn = row.go }
+        y = y + m.note_h + Screen:scaleBySize(1)
+      else
         local detail = row.detail and text(row.detail, 18, { gray = true }) or nil
         local arrow = text("›", 26, { bold = true })
         local right_w = (detail and detail:getSize().w + m.gap or 0) + arrow:getSize().w
@@ -587,6 +655,7 @@ function Library:listBody(m, model, top)
         group[#group + 1] = rule(m.w)
         self.hits[#self.hits + 1] = { x = 0, y = y, w = m.w, h = m.row_h, fn = row.go }
         y = y + m.row_h + Screen:scaleBySize(1)
+      end
     end
     return group, y
 end
@@ -804,7 +873,10 @@ function Library:render()
     if (model.pages or 1) > 1 then
         push(self:foot(m, model, y), m.foot_h + Screen:scaleBySize(1))
     end
-    self[1] = FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = 0, padding = 0, margin = 0, width = m.w, height = m.h, content }
+    -- all the room: the white of the container reaches only as far as what is in it
+    if m.h - y > 0 then push(VerticalSpan:new{ width = m.h - y }, m.h - y) end
+    -- into the container that is kept (the bar of tabs wraps that one: replacing self[1] would take the bar away)
+    self.content[1] = content
     UIManager:setDirty(self, function() return "ui", self.dimen end)
     self:loadCovers()
 end
@@ -836,7 +908,7 @@ end
 -- ---------------------------------------------------------------- touch
 
 function Library:onTapLibrary(_, ges)
-    local x, y = ges.pos.x, ges.pos.y
+    local x, y = ges.pos.x, ges.pos.y - (self.top or 0)
     for _, hit in ipairs(self.hits or {}) do
         if x >= hit.x and x < hit.x + hit.w and y >= hit.y and y < hit.y + hit.h then
             local ok, err = xpcall(hit.fn, debug.traceback)
@@ -997,20 +1069,44 @@ end
 
 -- ---------------------------------------------------------------- the widget
 
+--- Where the content starts and how high it is: the whole screen, or what the bars of the Simple UI leave when they are around it.
+function Library:geometry()
+    if self._navbar_injected then
+        local ok, UI = pcall(require, "infra/sui_core")
+        if ok and UI and UI.getContentHeight then return UI.getContentTop(), UI.getContentHeight() end
+    end
+    return 0, Screen:getHeight()
+end
+
 function Library:init()
-    self.m = measures()
-    self.dimen = Geom:new{ x = 0, y = 0, w = self.m.w, h = self.m.h }
+    local top, h = self:geometry()
+    self.top = top
+    self.m = measures(h)
+    self.dimen = Geom:new{ x = 0, y = top, w = self.m.w, h = h }
     self.ges_events = {
         TapLibrary = { GestureRange:new{ ges = "tap", range = self.dimen } },
         SwipeLibrary = { GestureRange:new{ ges = "swipe", range = self.dimen } },
     }
-    self.stack = { { kind = "root", page = 1 } }
+    -- the container the screens are drawn into; the bar of tabs (when there is one) is put around it
+    self.content = FrameContainer:new{ background = Blitbuffer.COLOR_WHITE, bordersize = 0, padding = 0, margin = 0, VerticalSpan:new{ width = 0 } }
+    self[1] = self.content
+    self.stack = { self.start or { kind = "root", page = 1 } }
     self.letters_h = 2 * Screen:scaleBySize(40) -- the strip of letters of the authors: two lines, until it is drawn once
     self.hits = {}
     self.plugin.library_open = self
     Store.configure(self.plugin:booksDir())
     pcall(Store.prune)
     self:refresh()
+end
+
+--- The Simple UI puts its bars around the widget when it is shown: the screen is drawn again for the room that is left.
+function Library:onShow()
+    local top, h = self:geometry()
+    if top ~= self.top or h ~= self.m.h then
+        self.top = top
+        self.m = measures(h)
+        self:refresh()
+    end
 end
 
 function Library:onCloseWidget()

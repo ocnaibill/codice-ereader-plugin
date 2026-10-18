@@ -108,7 +108,8 @@ function Libview.worksParams(spec, page)
     if spec.search and spec.search ~= "" then p.search = spec.search end
     if spec.favorite then p.favorite = "true" end
     if spec.inProgress then p.inProgress = "true" end
-    p.sort = spec.sort or "title"
+    -- what is being read comes the one opened last first (the server's own order for it); the rest by title unless another is asked
+    if spec.sort or not spec.inProgress then p.sort = spec.sort or "title" end
     -- a series is shown by its volumes, each by itself, in the lists of a person or a category; the grid of the whole library folds them
     if not (spec.category or spec.person or spec.search or spec.favorite or spec.inProgress) then p.series = "collapse" end
     return p
