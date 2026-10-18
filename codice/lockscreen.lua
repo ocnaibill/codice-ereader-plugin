@@ -151,6 +151,14 @@ function Lockscreen.set(plugin, on)
     end
 end
 
+--- Keeps what went wrong for the diagnostic (and the log).
+local function remember(plugin, err)
+    local store = plugin:store()
+    store:saveSetting("lockscreen_error", err and (os.date("%Y-%m-%d %H:%M ") .. tostring(err)) or false)
+    store:flush()
+    if err then logger.warn("codice: the lock screen failed:", err) end
+end
+
 --- At the start: it is on unless the person turned it off; the images are made if they are not there or the covers changed.
 function Lockscreen.start(plugin)
     if not Lockscreen.enabled(plugin) then return end
@@ -158,7 +166,36 @@ function Lockscreen.start(plugin)
         Lockscreen.apply(plugin)
         Lockscreen.update(plugin)
     end)
-    if not ok then logger.warn("codice: the lock screen failed:", err) end
+    remember(plugin, not ok and err or nil)
+end
+
+--- Just before the reader sleeps: the screensaver is still pointed at the images (something else may have changed it since the start).
+function Lockscreen.ensure(plugin)
+    if not Lockscreen.enabled(plugin) then return end
+    local d = dir()
+    if G_reader_settings:readSetting("screensaver_type") ~= "random_image" or G_reader_settings:readSetting("screensaver_dir") ~= d
+        or G_reader_settings:isTrue("screensaver_show_message") then
+        logger.warn("codice: the screensaver was not pointed at the covers when the reader slept; pointing it again")
+        pcall(Lockscreen.apply, plugin)
+    end
+end
+
+--- What the lock screen is doing, in words (for the person to read to whoever helps): the setting of KOReader, the folder and its images, the last error.
+function Lockscreen.report(plugin)
+    local d = dir()
+    local images = listImages(d)
+    local lines = {
+        "Tela de bloqueio do Códice: " .. (Lockscreen.enabled(plugin) and "ligada" or "desligada"),
+        "Protetor de tela do KOReader: " .. tostring(G_reader_settings:readSetting("screensaver_type")),
+        "Pasta: " .. tostring(G_reader_settings:readSetting("screensaver_dir")),
+        "É a do Códice: " .. ((G_reader_settings:readSetting("screensaver_dir") == d) and "sim" or "não"),
+        "Mensagem sobre a imagem: " .. (G_reader_settings:isTrue("screensaver_show_message") and "ligada" or "desligada"),
+        "Imagens feitas: " .. #images,
+        "Tela: " .. Screen:getWidth() .. "x" .. Screen:getHeight(),
+    }
+    local err = plugin:store():readSetting("lockscreen_error")
+    if err then lines[#lines + 1] = "Último erro: " .. tostring(err) end
+    return table.concat(lines, "\n")
 end
 
 --- The shelf changed: the images are made again when it has been quiet for a few seconds.

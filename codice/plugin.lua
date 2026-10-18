@@ -474,6 +474,11 @@ function Codice:onReaderReady()
     end)
 end
 
+--- The reader is going to sleep: the lock screen is made sure of (see codice/lockscreen.lua).
+function Codice:onSuspend()
+    pcall(function() require("codice/lockscreen").ensure(self) end)
+end
+
 --- A highlight or a note was made, changed or deleted: what changed is sent when the person stops for a moment (not for each letter of a note).
 function Codice:onAnnotationsModified()
     if self._notes_timer then UIManager:unschedule(self._notes_timer) end
@@ -588,6 +593,18 @@ function Codice:addToMainMenu(menu_items)
                     local Lockscreen = require("codice/lockscreen")
                     Lockscreen.set(self, not Lockscreen.enabled(self))
                     if touchmenu_instance then touchmenu_instance:updateItems() end
+                end,
+            },
+            {
+                text = "Diagnóstico da tela de bloqueio",
+                keep_menu_open = true,
+                callback = function()
+                    local Lockscreen = require("codice/lockscreen")
+                    local ok, text = pcall(function()
+                        pcall(Lockscreen.update, self)
+                        return Lockscreen.report(self)
+                    end)
+                    self:say(ok and text or ("Não consegui montar o diagnóstico: " .. tostring(text)))
                 end,
             },
             { text = "Procurar atualização do plugin", callback = function() self:checkUpdate(false) end },
