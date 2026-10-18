@@ -20,7 +20,7 @@ jobs:
             echo "tag $GITHUB_REF_NAME, codice/core.lua says $version, _meta.lua says $meta"; exit 1
           fi
       - run: find . -name '*.lua' -not -path './.git/*' -print0 | xargs -0 -n1 luajit -bl > /dev/null
-      - run: luajit tests/run.lua
+      - run: luajit tests/run.lua && luajit tests/update_dirs.lua
       - name: package
         run: |
           mkdir -p stage/plugins/codice.koplugin

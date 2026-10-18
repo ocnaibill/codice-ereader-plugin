@@ -94,7 +94,10 @@ end
 
 --- The folder of this plugin (where main.lua is) and the one next to it where the previous version is kept.
 function Update.dirs(plugin)
-    local dir = tostring(plugin.path or ""):gsub("/+$", "")
+    -- `plugin.path` is set by KOReader on the plugin it loads; the Códice's module, registered by the plugin that carries it (the Simple UI),
+    -- has none, so the folder is found from where this very file is
+    local dir = plugin.path or core.pluginDirFromSource(debug.getinfo(1, "S").source, lfs.currentdir()) or ""
+    dir = tostring(dir):gsub("/+$", "")
     return dir, dir .. ".old", dir .. ".new"
 end
 

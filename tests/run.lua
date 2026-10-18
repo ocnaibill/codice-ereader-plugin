@@ -181,5 +181,16 @@ eq(core.sameRows(a, b), false, "o progresso conta")
 eq(core.sameRows(nil, nil), true, "duas homes vazias")
 eq(core.sameRows(a, nil), false, "uma com cartões, outra sem")
 
+-- a pasta do plugin, pelo caminho de um arquivo dele
+eq(core.pluginDirFromSource("@/mnt/us/koreader/plugins/codice.koplugin/codice/update.lua"), "/mnt/us/koreader/plugins/codice.koplugin", "caminho absoluto")
+eq(core.pluginDirFromSource("@plugins/codice.koplugin/codice/update.lua", "/mnt/us/koreader"), "/mnt/us/koreader/plugins/codice.koplugin", "relativo vira absoluto")
+eq(core.pluginDirFromSource("@./plugins/codice.koplugin/codice/update.lua", "/mnt/us/koreader/"), "/mnt/us/koreader/plugins/codice.koplugin", "tira o ./ e a barra do fim")
+eq(core.pluginDirFromSource("@plugins/codice.koplugin/codice/update.lua"), "plugins/codice.koplugin", "relativo sem diretório atual fica como está")
+eq(core.pluginDirFromSource("@./codice/update.lua", "/mnt/us/koreader"), "/mnt/us/koreader", "a pasta atual")
+eq(core.pluginDirFromSource("=stdin"), nil, "não é arquivo")
+eq(core.pluginDirFromSource("@/x/outro/arquivo.lua"), nil, "não é da pasta codice/")
+eq(core.pluginDirFromSource("@/codice/update.lua"), nil, "sem pasta do plugin")
+eq(core.pluginDirFromSource(nil), nil, "sem fonte")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)
