@@ -45,6 +45,11 @@ function Libview.workCard(w)
         card.title = c.name or card.title
         card.cover = c.coverUrl or card.cover
         card.subtitle = Libview.seriesCount(c)
+        -- who publishes it (DEC-203): kept on the card, and said before the count (the line is cut at the width of the card)
+        if type(c.publisher) == "string" and c.publisher ~= "" then
+            card.publisher = c.publisher
+            card.subtitle = c.publisher .. " · " .. card.subtitle
+        end
         card.percent = 0
         card.key = "codice:series:" .. tostring(c.collectionId)
     end
@@ -309,6 +314,9 @@ function Libview.seriesSheet(data, shelf)
     end
     local subtitle = available .. " " .. words[available == 1 and 1 or 2]
     if read > 0 then subtitle = subtitle .. " · " .. read .. (read == 1 and " lido" or " lidos") end
+    -- the publisher of the series (DEC-203), first: it is what the heading says of the whole
+    local publisher = type(c.publisher) == "string" and c.publisher ~= "" and c.publisher or nil
+    if publisher then subtitle = publisher .. " · " .. subtitle end
     local go_on
     if type(data.continue) == "table" and data.continue.id then
         local step = data.continue
@@ -324,7 +332,7 @@ function Libview.seriesSheet(data, shelf)
     end
     local cover = c.coverUrl
     if (not cover or cover:find("placeholder", 1, true)) and rows[1] then cover = rows[1].card.cover end
-    return { name = c.name, cover = cover, subtitle = subtitle, go_on = go_on, heading = heading, rows = rows }
+    return { name = c.name, cover = cover, subtitle = subtitle, publisher = publisher, go_on = go_on, heading = heading, rows = rows }
 end
 
 --- The title of the header of a list from its spec.
