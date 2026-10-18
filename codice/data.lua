@@ -72,6 +72,8 @@ function Data.refresh(on_change, force)
             local before = Data.load()
             Data.save(home)
             if not core.sameRows(before, home) and on_change then on_change() end
+            -- the shelf (what is on the device) is made up to date with the same network
+            pcall(function() require("codice/shelfstore").refresh(c, on_change) end)
         end
     end)
     asking = false

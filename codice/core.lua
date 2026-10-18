@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.7.3"
+M.PLUGIN_VERSION = "0.8.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -443,6 +443,25 @@ function M.touchContinue(home, card, percent)
     for k, v in pairs(home) do out[k] = v end
     out.continue = rest
     return out, true
+end
+
+--- The state of the connection, for the notice of the library: "online"; "wifi_off" (the reader has no network); or "server_down" (it has, and
+--- the last call to the server failed not long ago: the server is not answering). `last` is `{ ok, at }` of the last call, or nil.
+M.SERVER_DOWN_FOR = 300 -- seconds a failed call keeps saying the server is down; after that the next call is tried again
+function M.connectivity(wifi_on, last, now)
+    if not wifi_on then return "wifi_off" end
+    if type(last) == "table" and last.ok == false and (now or 0) - (last.at or 0) < M.SERVER_DOWN_FOR then return "server_down" end
+    return "online"
+end
+
+--- The notice of the library when it is showing only what is on the device: why, and how old what it shows is. `kept_at` is when the shelf was
+--- last made up to date (seconds since the epoch, or nil), `date` formats it ("16/10").
+function M.offlineNotice(state, kept_at, date)
+    if state == "online" then return nil end
+    local why = state == "wifi_off" and "Sem conexão" or "Servidor não responde"
+    local text = why .. ": mostrando só o que está no aparelho."
+    if kept_at and kept_at > 0 then text = text .. " Atualizado em " .. date(kept_at) .. "." end
+    return text
 end
 
 -- ---------------------------------------------------------------- files

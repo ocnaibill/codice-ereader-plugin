@@ -21,6 +21,7 @@ local md5 = require("ffi/sha2").md5
 
 local core = require("codice/core")
 local Data = require("codice/data")
+local Store = require("codice/shelfstore")
 local api = require("codice/http")
 local Diag = require("codice/diag")
 local Pairing = require("codice/pairing")
@@ -345,6 +346,8 @@ function Codice:openBook(card, before)
                 os.remove(part)
                 return self:say("Não consegui guardar o livro baixado.")
             end
+            -- on the shelf: what the library shows with no network
+            pcall(Store.record, c, card, core.bookFileName(card))
             open()
         end))
     end))
@@ -608,6 +611,7 @@ function M.install(ui)
     end
     ui:registerModule(core.MODULE_SLOT, instance)
     M.live = instance
+    pcall(function() Store.configure(instance:booksDir()) end)
     -- later, so that the screen of the file manager (and the Simple UI's own first-run) is there first
     UIManager:scheduleIn(6, function()
         local ok, err = pcall(instance.welcome, instance)
