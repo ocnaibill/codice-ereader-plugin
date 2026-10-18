@@ -23,6 +23,7 @@ Este plugin é um **fork do [Simple UI](https://github.com/doctorhetfield-cmd/si
 
 | Arquivo | O que mudou | Por quê |
 |---|---|---|
+| `screens/sui_homescreen.lua` | em `on_after_open`, com o Códice presente a janela de boas-vindas do Simple UI (em inglês, com layouts que não são os do Códice) não abre: marca o onboarding como feito | a primeira abertura é a boas-vindas do Códice, sem uma janela em inglês na frente |
 | `main.lua` | a mensagem de "atualizado" (era "Simple UI was updated…", agora "Códice atualizado neste Kindle para a versão X"); e no começo de `SimpleUIPlugin:init()`, um `pcall` que chama `require("codice/plugin").install(self.ui)` | registra o módulo do Códice em cada tela principal, antes de qualquer coisa do Simple UI poder parar |
 | `_meta.lua` | nome de exibição, descrição, autor e versão (a versão é a do Códice) | identidade do fork |
 | `infra/sui_updater.lua` | no fim do arquivo, as funções públicas são trocadas por versões que não usam a rede e `checkForUpdates` chama o atualizador do Códice | o atualizador original instalaria o zip do Simple UI original por cima deste plugin |

@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.14.0"
+M.PLUGIN_VERSION = "0.14.1"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -569,6 +569,16 @@ end
 --- The notice after the plugin was updated: "Códice atualizado neste Kindle para a versão 0.14.0".
 function M.updatedNotice(version, is_kindle)
     return "Códice atualizado neste " .. (is_kindle and "Kindle" or "leitor") .. " para a versão " .. tostring(version) .. "."
+end
+
+--- What is said when the reader got connected: who, and that the home and the tabs are mounted (when they were); the restart is only asked of
+--- whoever already has a book open (KOSync reads its settings when the book is opened).
+function M.pairedNotice(username, mounted, book_open)
+    local text = "Conectado ao Códice como " .. tostring(username) .. "."
+    if mounted then text = text .. "\n\nA home e a barra de abas do Códice foram montadas." end
+    text = text .. "\n\nO catálogo e a sincronização já estão configurados."
+    if book_open then text = text .. "\nComo há um livro aberto, reinicie o KOReader uma vez." end
+    return text
 end
 
 -- ---------------------------------------------------------------- files

@@ -625,5 +625,8 @@ eq(#core.lockscreenCovers({}, function() return true end), 0, "sem livros, sem c
 eq(core.lockscreenSignature({ { id = 1 }, { id = 3 } }, 600, 800), "2:600x800:1,3", "assinatura"); eq(core.lockscreenSignature({}, 600, 800), "2:600x800:", "sem livros")
 eq(core.updatedNotice("0.14.0", true), "Códice atualizado neste Kindle para a versão 0.14.0.", "aviso no Kindle"); eq(core.updatedNotice("0.14.0", false), "Códice atualizado neste leitor para a versão 0.14.0.", "em outro leitor")
 
+eq(core.pairedNotice("ana", true, false), "Conectado ao Códice como ana.\n\nA home e a barra de abas do Códice foram montadas.\n\nO catálogo e a sincronização já estão configurados.", "conectado, sem livro aberto")
+eq(core.pairedNotice("ana", false, true):find("reinicie", 1, true) ~= nil, true, "com livro aberto, pede para reiniciar"); eq(core.pairedNotice("ana", false, false):find("reinicie", 1, true), nil, "sem livro, não pede")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

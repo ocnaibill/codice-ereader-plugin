@@ -30,6 +30,12 @@ local BUILTIN_INSTANCE_CFG = {
         local logger = require("logger")
         logger.info("simpleui[diag]: on_after_open onboarding_done=", SUISettings:get("simpleui_onboarding_done"))
         if SUISettings:get("simpleui_onboarding_done") then return end
+        -- (Códice) the welcome of the Códice takes the place of this window (it is in English and offers layouts that are not the Códice's): the
+        -- defaults of the first run were set already, and the home and the tabs are mounted when the reader is connected
+        if pcall(require, "codice/core") then
+            SUISettings:set("simpleui_onboarding_done", true)
+            return
+        end
         local ok, Onboarding = pcall(require, "screens/sui_onboarding")
         logger.info("simpleui[diag]: onboarding require ok=", ok, ok and "" or tostring(Onboarding))
         if ok and Onboarding then
