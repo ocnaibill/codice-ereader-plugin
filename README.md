@@ -91,7 +91,8 @@ Ao baixar um livro, o plugin o põe numa **prateleira** local (`settings/codice_
 ### A Biblioteca
 
 Em **Códice → Biblioteca** (e como ação "Biblioteca do Códice" para uma aba ou botão do Simple UI) abre a Biblioteca do Códice (DEC-198), uma tela só dela, sem rolagem: uma página de cada vez, virada com um toque no pé da tela ou um deslize.
-- **Raiz:** Categorias, Autores, Séries e coleções, Formatos, No aparelho e Todas as obras; a lupa busca por título e autor.
+- **Raiz:** Categorias, Autores, Séries e coleções, Formatos, No aparelho e Todas as obras; "Buscar" procura por título e autor. **Autores** abre numa letra (a primeira que existe), com as letras no alto, e cada página traz tantos nomes quanto cabem na tela; se a letra tem mais, vira-se a página.
+- **Séries:** numa grade, uma série (quadrinho ou mangá com vários volumes ou capítulos) aparece como um cartão só, com "5 capítulos" embaixo; tocar nele abre a série, com todos os volumes e capítulos para escolher.
 - **Lista de obras:** grade de capas 3×2 com a marca ↓ nas obras que estão no aparelho e a barra de progresso; filtros Todas, Baixadas e Lendo; "Ordem" por título, autor ou mais novas.
 - **Ficha da obra:** série, quanto você leu, categorias e os arquivos (idioma e formato; "no aparelho" ou "baixar · tamanho"). **Ler** abre o melhor arquivo (o último lido, senão o principal), baixando se precisar; **Remover do aparelho** apaga só a cópia local, o progresso fica no Códice.
 - **Sem conexão** (Wi-Fi desligado ou servidor fora do ar): uma faixa avisa, e a Biblioteca mostra só o que está no aparelho, com os números do aparelho, lendo da prateleira.
