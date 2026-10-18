@@ -1253,7 +1253,7 @@ function Library:init()
     local top, h = self:geometry()
     self.top = top
     self.m = measures(h)
-    self.dimen = Geom:new{ x = 0, y = top, w = self.m.w, h = h }
+    self.dimen = Geom:new{ x = 0, y = 0, w = self.m.w, h = top + h }
     self.ges_events = {
         TapLibrary = { GestureRange:new{ ges = "tap", range = self.dimen } },
         SwipeLibrary = { GestureRange:new{ ges = "swipe", range = self.dimen } },
@@ -1276,8 +1276,17 @@ function Library:onShow()
     if top ~= self.top or h ~= self.m.h then
         self.top = top
         self.m = measures(h)
+        self:place(top, h)
         self:refresh()
     end
+end
+
+--- Where the widget is on the screen: the taps, the swipes and the part of the screen that is drawn again all follow `self.dimen` (the same table, so
+--- changing it here changes them). The widget is painted from the top of the screen, and its content sits below the status bar of the Simple UI: so it
+--- must reach down to the end of the content (`top + h`), not stop at `h`. It stopped there, and the foot (the buttons and the counter of the
+--- pages) fell outside it: no tap reached it, and an e-ink screen did not draw it again.
+function Library:place(top, h)
+    self.dimen.x, self.dimen.y, self.dimen.w, self.dimen.h = 0, 0, self.m.w, top + h
 end
 
 function Library:onCloseWidget()
