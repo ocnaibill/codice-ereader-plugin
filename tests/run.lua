@@ -244,6 +244,8 @@ eq(core.sameRows(h1, h2), false, "o total da prateleira mudou")
 -- a primeira tela, como a web diz
 eq(core.dateLabel({ day = 18, month = 10, year = 2026 }), "18 de outubro de 2026", "data por extenso")
 eq(core.timeLabel({ hour = 9, min = 11 }), "09:11", "hora com zero à esquerda")
+eq(core.dayLabel({ wday = 1, day = 18, month = 10, year = 2026 }), "domingo, 18 de outubro", "dia da semana e data")
+eq(core.dayLabel({ wday = 4, day = 1, month = 3, year = 2026 }), "quarta-feira, 1 de março", "dia 1")
 eq(core.greeting(9, "binaco"), "Bom dia, binaco :)", "de manhã")
 eq(core.greeting(12, "ana"), "Boa tarde, ana :)", "ao meio-dia já é tarde")
 eq(core.greeting(18, "ana"), "Boa noite, ana :)", "às 18h é noite")
@@ -288,6 +290,7 @@ eq(core.sameRows({ user = { name = "a" } }, { user = { name = "a" } }), true, "m
 local preset = core.homePreset()
 eq(preset.id, core.PRESET_ID, "id da predefinição")
 eq(#preset.layout.pages, 3, "três páginas")
+eq(preset.settings.simpleui_hs_codice_shelf2_grid_cols, 5, "prateleiras com cinco capas por fileira")
 local seen, dup = {}, false
 for _, page in ipairs(preset.layout.pages) do
     for _, id in ipairs(page.modules) do
@@ -296,7 +299,7 @@ for _, page in ipairs(preset.layout.pages) do
     end
 end
 eq(dup, false, "nenhum módulo repetido")
-for _, id in ipairs({ "codice_greeting", "codice_stats", "codice_continue", "codice_favorites", "codice_note", "codice_shelf1", "codice_shelf2", "codice_shelf3" }) do
+for _, id in ipairs({ "codice_greeting", "codice_stats", "codice_continue", "codice_favorites", "codice_shelf1", "codice_shelf2", "codice_shelf3" }) do
     eq(seen[id], true, "a predefinição tem " .. id)
 end
 -- every module of the preset exists as a file, with that id
