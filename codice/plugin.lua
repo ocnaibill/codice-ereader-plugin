@@ -538,6 +538,8 @@ function M.install(ui)
         pcall(function()
             local Registry = require("modules/moduleregistry")
             Registry.register("codice/modules/continue")
+            Registry.register("codice/modules/favorites")
+            for n = 1, core.SHELF_SLOTS do Registry.register("codice/modules/shelf" .. n) end
         end)
     end
     return instance

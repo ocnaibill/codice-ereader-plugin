@@ -133,7 +133,7 @@ eq(core.pickRelease({ tag_name = "nightly", assets = release.assets }), nil, "ta
 eq(core.pickRelease(nil), nil, "sem release")
 eq(core.parseSha256("ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789  codice-plugin.zip\n"), "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789", "hash em minúsculas")
 eq(core.parseSha256("não é um hash"), nil, "texto sem hash")
-eq(core.isNewer("0.5.0"), true, "mais nova")
+eq(core.isNewer("9.0.0"), true, "mais nova")
 eq(core.isNewer(core.PLUGIN_VERSION), false, "a mesma")
 eq(core.isNewer("0.1.0"), false, "mais velha")
 
@@ -215,6 +215,30 @@ do
     p:close()
     eq(#offenders, 0, "nenhum arquivo usa ui.codice nem registra o módulo como \"codice\": " .. table.concat(offenders, ", "))
 end
+
+-- prateleiras da home
+local shelfHome = { shelves = {
+    { id = 7, title = "Ficção", total = 40, works = { { id = 1, title = "A" }, { title = "sem id" }, { id = 2, title = "B" }, { id = 3, title = "C" } } },
+    { id = 9, title = "Quadrinhos", total = 2, works = { { id = 1, title = "A" }, { id = 5, title = "E" } } },
+} }
+local sh = core.shelfItems(shelfHome, 1, 2)
+eq(#sh, 2, "no máximo 2 da prateleira")
+eq(sh[1].key, "codice:s7:1", "a chave leva o id da prateleira")
+eq(sh[2].key, "codice:s7:2", "pula quem não tem id")
+eq(core.shelfItems(shelfHome, 2, 5)[1].key, "codice:s9:1", "a mesma obra em outra prateleira é outra célula")
+eq(#core.shelfItems(shelfHome, 3, 5), 0, "prateleira que não existe")
+eq(#core.shelfItems(nil, 1, 5), 0, "sem home")
+eq(core.shelfLabel(shelfHome, 1), "Ficção (40)", "mais obras do que a prateleira mostra")
+eq(core.shelfLabel(shelfHome, 2), "Quadrinhos", "a prateleira mostra todas")
+eq(core.shelfLabel(shelfHome, 3), nil, "sem prateleira")
+eq(core.SHELF_SLOTS, 6, "seis prateleiras")
+local h1 = { shelves = { { id = 1, title = "X", total = 1, works = { { id = 1, title = "A", percent = 0 } } } } }
+local h2 = { shelves = { { id = 1, title = "X", total = 1, works = { { id = 1, title = "A", percent = 0 } } } } }
+eq(core.sameRows(h1, h2), true, "prateleiras iguais")
+h2.shelves[1].works[1].title = "B"
+eq(core.sameRows(h1, h2), false, "uma obra mudou numa prateleira")
+h2.shelves[1].works[1].title = "A"; h2.shelves[1].total = 5
+eq(core.sameRows(h1, h2), false, "o total da prateleira mudou")
 
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)
