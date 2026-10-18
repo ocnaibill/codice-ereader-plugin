@@ -509,5 +509,26 @@ eq(Libview.worksParams({ inProgress = true }, 1).sort, nil, "em leitura: a ordem
 eq(Libview.worksParams({ inProgress = true, sort = "title" }, 1).sort, "title", "mas se pedirem uma ordem, vale")
 eq(Libview.worksParams({ favorite = true }, 1).sort, "title", "favoritas por título")
 
+-- a página de uma série
+eq(Libview.unitLabel("chapter", 5), "Cap. 5", "capítulo"); eq(Libview.unitLabel("volume", 27.5), "Vol. 27,5", "volume fracionado"); eq(Libview.unitLabel("oneshot", nil), "Único", "único")
+eq(Libview.unitLabel("extra", nil), "Compl.", "complementar"); eq(Libview.unitLabel(nil, 3), "3", "sem unidade, o número"); eq(Libview.unitLabel(nil, nil), "", "nada")
+eq(Libview.stepText({ unit = "chapter", position = 5, title = "Batman #5" }), "Cap. 5", "o passo pelo número"); eq(Libview.stepText({ title = "Sem número" }), "Sem número", "ou pelo título")
+eq(Libview.goOnText({ unit = "chapter", position = 5, started = true }), "Continuar: Cap. 5", "continuar"); eq(Libview.goOnText({ unit = "chapter", position = 6, begun = true }), "Próximo: Cap. 6", "próximo")
+eq(Libview.goOnText({ unit = "chapter", position = 1 }), "Começar: Cap. 1", "começar")
+local ss = Libview.seriesSheet({ collection = { id = 21, name = "Absolute Batman", coverUrl = "/covers/placeholder.svg" },
+    works = { { id = 31, title = "AB #1", author = "S", coverUrl = "/c/31", unit = "chapter", position = 1, completed = true, available = true },
+              { id = 32, title = "AB #2", coverUrl = "/c/32", unit = "chapter", position = 2, percent = 40, started = true, available = true },
+              { id = 33, title = "AB #3", coverUrl = "/c/33", unit = "chapter", position = 3, available = true },
+              { id = 34, title = "Sumiu", unit = "chapter", position = 4, available = false } },
+    continue = { id = 32, title = "AB #2", unit = "chapter", position = 2, started = true, begun = true } }, shelfIdx)
+eq(ss.name, "Absolute Batman", "nome"); eq(ss.subtitle, "3 capítulos · 1 lido", "quantos e quantos lidos"); eq(ss.heading, "CAPÍTULOS", "título da lista")
+eq(#ss.rows, 3, "as indisponíveis ficam de fora"); eq(ss.rows[1].label, "Cap. 1", "rótulo"); eq(ss.rows[1].state, "lido", "lido"); eq(ss.rows[2].state, "40%", "em andamento"); eq(ss.rows[3].state, nil, "não começado")
+eq(ss.go_on.text, "Continuar: Cap. 2 (40%)", "o botão"); eq(ss.go_on.card.id, 32, "abre o capítulo certo"); eq(ss.cover, "/c/31", "sem capa própria, a do primeiro")
+eq(ss.rows[1].card.fileCount, 2, "abrir um capítulo pergunta os arquivos, se houver mais de um")
+local ss2 = Libview.seriesSheet({ collection = { name = "Mista" }, works = { { id = 1, title = "A", unit = "volume", position = 1, available = true }, { id = 2, title = "B", unit = "chapter", position = 1, available = true } } }, nil)
+eq(ss2.subtitle, "2 obras", "unidades misturadas: obras"); eq(ss2.heading, "OBRAS", "título"); eq(ss2.go_on, nil, "sem passo, sem botão")
+local ss3 = Libview.seriesSheet({ collection = { name = "Uma" }, works = { { id = 99, title = "A", unit = "volume", position = 1, available = true } } }, shelfIdx)
+eq(ss3.subtitle, "1 volume", "singular"); eq(ss3.rows[1].here, false, "não está no aparelho")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

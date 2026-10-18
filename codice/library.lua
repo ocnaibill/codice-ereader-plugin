@@ -68,6 +68,7 @@ local function measures(h)
     m.card_w = math.floor((m.content_w - (COLS - 1) * m.gap) / COLS)
     m.cover_h = math.floor(m.card_w * 1.5)
     m.row_h = Screen:scaleBySize(64)
+    m.srow_h = Screen:scaleBySize(46) -- a chapter in the page of a series
     m.note_h = Screen:scaleBySize(150) -- a note in the list of notes: the passage over three lines, and where it is from
     return m
 end
@@ -294,7 +295,7 @@ function Library:modelCollections(view)
         if code == 200 and type(data) == "table" and type(data.data) == "table" then
             for _, c in ipairs(data.data) do
                 rows[#rows + 1] = { title = c.name, detail = tostring(c.workCount or ""), go = function()
-                    self:push("collection", { id = c.id, title = c.name })
+                    self:push("series", { id = c.id, title = c.name })
                 end }
             end
             page = data.page or page
@@ -307,7 +308,7 @@ function Library:modelCollections(view)
         rows = {}
         for _, s in ipairs(Shelf.series(shelf())) do
             rows[#rows + 1] = { title = s.name, detail = tostring(s.count), go = function()
-                self:push("works", { spec = { series = s.name, title = s.name } })
+                self:push("series", { title = s.name })
             end }
         end
         rows, page, pages = pageOfRows(rows, page, self:rowsPerPage())
@@ -422,18 +423,47 @@ function Library:modelMore(view)
     return { kind = "list", title = view.title or "Mais", rows = rows, page = 1, pages = 1 }
 end
 
---- The works of a collection.
-function Library:modelCollection(view)
-    local code, data = self:get("/device/collections/" .. tostring(view.id))
-    local all = {}
-    local offline = not (code == 200 and type(data) == "table")
-    if not offline then all = Libview.markDownloaded(Libview.cardsOf(data, true), shelf()) end
-    local pages = math.max(1, math.ceil(#all / PER_PAGE))
+--- Rows of a series sheet that fit a page: what is left under the block of the series, the button, the heading and over the foot.
+function Library:seriesRowsPerPage(has_button, has_notice)
+    local m = self.m
+    local cover_h = math.floor(math.floor(m.w * 0.2) * 1.5)
+    local used = m.header_h + (has_notice and m.notice_h or 0) + cover_h + m.gap + (has_button and (Screen:scaleBySize(54) + m.gap) or 0) + Screen:scaleBySize(35) + m.foot_h
+    return math.max(3, math.floor((m.h - used) / (m.srow_h + Screen:scaleBySize(1))))
+end
+
+--- The page of a series (a comic or a manga with chapters or volumes): the cover, the name, how many and how many read, the button to go on
+--- reading, and the chapters, as the sheet of a book has its files. From the server when there is a network, from the shelf when there is not.
+function Library:modelSeries(view)
+    local offline = not (view.id and self:online())
+    local sheet
+    if not offline then
+        local code, data = self:get("/device/collections/" .. tostring(view.id))
+        if code == 200 and type(data) == "table" and type(data.works) == "table" then
+            sheet = Libview.seriesSheet(data, shelf())
+            sheet.name = sheet.name or view.title
+        else
+            offline = true
+        end
+    end
+    if offline then
+        -- the works of the series that are on the device, in the order of the series
+        local cards = Shelf.list(shelf(), { series = view.title })
+        table.sort(cards, function(a, b) return (tonumber(a.seriesIndex) or 0) < (tonumber(b.seriesIndex) or 0) end)
+        local rows = {}
+        for _, c in ipairs(cards) do
+            local n = tonumber(c.seriesIndex)
+            local state = c.completed and "lido" or ((c.percent or 0) > 0 and (math.floor(c.percent + 0.5) .. "%") or nil)
+            local card = { id = c.id, title = c.title, author = c.author, cover = c.cover, percent = c.percent, completed = c.completed, fileCount = 2, key = c.key }
+            rows[#rows + 1] = { id = c.id, label = (n and n > 0) and ("Vol. " .. (n == math.floor(n) and math.floor(n) or n)) or "", title = c.title, state = state, here = true, card = card }
+        end
+        sheet = { name = view.title, cover = cards[1] and cards[1].cover, subtitle = #rows .. (#rows == 1 and " obra" or " obras") .. " no aparelho", heading = "OBRAS", rows = rows }
+    end
+    local per = self:seriesRowsPerPage(sheet.go_on ~= nil, offline)
+    local pages = math.max(1, math.ceil(#sheet.rows / per))
     local page = math.min(math.max(1, view.page or 1), pages)
-    local cards = {}
-    for i = (page - 1) * PER_PAGE + 1, math.min(#all, page * PER_PAGE) do cards[#cards + 1] = all[i] end
-    return { kind = "grid", title = view.title or "Coleção", cards = cards, page = page, pages = pages, notice = self:notice(offline),
-             empty = offline and "Não consegui abrir esta coleção." or "Nenhuma obra." }
+    local shown = {}
+    for i = (page - 1) * per + 1, math.min(#sheet.rows, page * per) do shown[#shown + 1] = sheet.rows[i] end
+    return { kind = "series", title = sheet.name or "Série", series = sheet, rows = shown, page = page, pages = pages, notice = self:notice(offline) }
 end
 
 --- The sheet of a work.
@@ -481,7 +511,7 @@ end
 
 local MODELS = {
     root = "modelRoot", categories = "modelCategories", people = "modelPeople", collections = "modelCollections", formats = "modelFormats",
-    works = "modelWorks", collection = "modelCollection", detail = "modelDetail", notes = "modelNotes", more = "modelMore",
+    works = "modelWorks", series = "modelSeries", detail = "modelDetail", notes = "modelNotes", more = "modelMore",
 }
 
 --- The entries of the root that open a list of works lead to it from here.
@@ -729,7 +759,7 @@ function Library:gridBody(m, model, top, holders, avail)
             self.hits[#self.hits + 1] = { x = left + (c - 1) * (card_w + m.gap), y = y, w = card_w, h = line_h - m.gap, fn = function()
                 if card.collection then
                     -- a series: its volumes and chapters, to choose which to read
-                    self:push("collection", { id = card.collection.id, title = card.collection.name })
+                    self:push("series", { id = card.collection.id, title = card.collection.name })
                 else
                     self:push("detail", { card = card })
                 end
@@ -811,6 +841,75 @@ function Library:detailBody(m, model, top, holders)
     return group, y
 end
 
+--- Opens a chapter or volume of a series: straight away when it has one file, asking which when it has more; fetched first if it is not on the device.
+function Library:openChapter(card)
+    self.plugin:chooseAndOpen(card, function() UIManager:close(self) end)
+end
+
+--- The page of a series: block with cover and name, the button to go on, and the chapters.
+function Library:seriesBody(m, model, top, holders)
+    local sheet = model.series
+    local group = VerticalGroup:new{ align = "left" }
+    local y = top + m.gap
+    group[#group + 1] = VerticalSpan:new{ width = m.gap }
+    local cover_w = math.floor(m.w * 0.2)
+    local cover_h = math.floor(cover_w * 1.5)
+    local cover = self:coverBox({ card_w = cover_w, cover_h = cover_h }, { cover = sheet.cover, title = sheet.name }, holders)
+    local info_w = m.content_w - cover_w - m.gap
+    local info = VerticalGroup:new{ align = "left",
+        TextBoxWidget:new{ text = sheet.name or "?", face = face(26, true), width = info_w },
+        VerticalSpan:new{ width = Screen:scaleBySize(6) },
+        TextBoxWidget:new{ text = sheet.subtitle or "", face = face(20), width = info_w },
+    }
+    group[#group + 1] = HorizontalGroup:new{ align = "top", HorizontalSpan:new{ width = m.margin }, cover, HorizontalSpan:new{ width = m.gap }, info }
+    y = y + math.max(cover_h, info:getSize().h) + m.gap
+    group[#group + 1] = VerticalSpan:new{ width = m.gap }
+
+    if sheet.go_on then
+        local bh = Screen:scaleBySize(54)
+        group[#group + 1] = HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin },
+            FrameContainer:new{ bordersize = Screen:scaleBySize(5), padding = 0, margin = 0, width = m.content_w, height = bh,
+                CenterContainer:new{ dimen = Geom:new{ w = m.content_w - 10, h = bh - 10 }, text(sheet.go_on.text, 20, { bold = true, max_width = m.content_w - 24 }) } } }
+        self.hits[#self.hits + 1] = { x = m.margin, y = y, w = m.content_w, h = bh, fn = function() self:openChapter(sheet.go_on.card) end }
+        group[#group + 1] = VerticalSpan:new{ width = m.gap }
+        y = y + bh + m.gap
+    end
+
+    local head_h = Screen:scaleBySize(34)
+    group[#group + 1] = box(m.w, head_h, HorizontalGroup:new{ HorizontalSpan:new{ width = m.margin }, text(sheet.heading or "OBRAS", 15, { bold = true }) })
+    group[#group + 1] = rule(m.w)
+    y = y + head_h + Screen:scaleBySize(1)
+    if #model.rows == 0 then
+        group[#group + 1] = box(m.w, m.row_h, HorizontalGroup:new{ HorizontalSpan:new{ width = m.margin },
+            TextBoxWidget:new{ text = "Nada por aqui.", face = face(20), width = m.content_w } })
+        return group, y + m.row_h
+    end
+    local label_w = math.floor(m.w * 0.2)
+    for _, row in ipairs(model.rows) do
+        local state_text = row.state or ""
+        if row.here then state_text = (state_text ~= "" and (state_text .. " · ") or "") .. "no aparelho" end
+        local state = text(state_text, 17, { gray = true })
+        local label = text(row.label ~= "" and row.label or row.title, 22, { bold = true, max_width = label_w })
+        local title_w = m.content_w - label_w - state:getSize().w - 2 * m.gap
+        -- the widths are worked out from the pieces: the size of a group is kept the first time it is asked, so none is asked before it is whole
+        local gap_label = math.max(m.gap, label_w - label:getSize().w + m.gap)
+        local line = HorizontalGroup:new{ align = "center", HorizontalSpan:new{ width = m.margin }, label, HorizontalSpan:new{ width = gap_label } }
+        local used = label:getSize().w + gap_label
+        if row.label ~= "" and title_w > 40 then
+            local title = text(row.title, 18, { gray = true, max_width = title_w })
+            line[#line + 1] = title
+            used = used + title:getSize().w
+        end
+        line[#line + 1] = HorizontalSpan:new{ width = math.max(m.gap, m.content_w - used - state:getSize().w - m.gap) }
+        line[#line + 1] = state
+        group[#group + 1] = CenterContainer:new{ dimen = Geom:new{ w = m.w, h = m.srow_h }, line }
+        group[#group + 1] = rule(m.w)
+        self.hits[#self.hits + 1] = { x = 0, y = y, w = m.w, h = m.srow_h, fn = function() self:openChapter(row.card) end }
+        y = y + m.srow_h + Screen:scaleBySize(1)
+    end
+    return group, y
+end
+
 --- The foot: the page of how many, and the ways to turn it.
 function Library:foot(m, model, top)
     local pages = model.pages or 1
@@ -862,6 +961,8 @@ function Library:render()
         body, body_end = self:gridBody(m, model, y, self.holders, m.h - y - m.foot_h - Screen:scaleBySize(1))
     elseif model.kind == "detail" then
         body, body_end = self:detailBody(m, model, y, self.holders)
+    elseif model.kind == "series" then
+        body, body_end = self:seriesBody(m, model, y, self.holders)
     else
         body, body_end = self:listBody(m, model, y)
     end
