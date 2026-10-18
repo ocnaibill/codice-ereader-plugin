@@ -40,6 +40,9 @@ Os módulos do Códice entram na home do Simple UI como os dele (sem mudar nada 
 |---|---|
 | **Códice: Continuar lendo** | os livros que você está lendo no Códice, com capa, progresso e título; tocar numa obra a abre (baixando o arquivo, se ele ainda não está no aparelho, e perguntando qual quando há mais de um) |
 | **Códice: Favoritos** | as obras que você marcou como favoritas no Códice; funciona como o Continuar lendo |
+| **Códice: Saudação** | a data, a hora e "Bom dia, nome :)", como o topo da home da web |
+| **Códice: Em andamento e atividade** | dois cartões lado a lado: quantas obras você está lendo (e de que formatos) e o que fez: obras completas no mês e tempo de leitura |
+| **Códice: Nota aleatória** | uma nota ou destaque seu, sorteado entre os que o servidor manda; a escolha dura uns 10 minutos. Tocar nela abre a obra |
 | **Códice: Prateleira 1** a **6** | as obras de cada categoria da biblioteca (as maiores primeiro, como na home da web); o título sobre a linha é o nome da categoria. Uma prateleira sem categoria correspondente fica vazia |
 
 Os dados vêm da última home que o servidor mandou, guardada no aparelho: a tela aparece na hora, sem rede, e se atualiza sozinha quando o Wi-Fi já está ligado (nunca pede Wi-Fi). As capas chegam depois, algumas por vez. Quantas colunas e linhas, o tamanho do texto e o resto da aparência são as configurações de módulo do próprio Simple UI.
@@ -76,3 +79,7 @@ luajit tests/run.lua      # a lógica que não precisa do KOReader
 | `codice/plugin.lua` | o módulo do Códice: menu, guardar o acesso, aplicar a configuração, abrir livros, atualizar quando a rede volta; é registrado pelo `main.lua` |
 | `codice/diag.lua` | os testes do protótipo |
 | `main.lua`, `infra/`, `screens/`, `engines/`, `features/`, `modules/`, `icons/`, `locale/` | o Simple UI (ver `UPSTREAM.md`) |
+
+### A home pronta
+
+No menu do Códice, **Montar a home do Códice** troca os módulos da home do Simple UI por uma home já montada, em três páginas: saudação, números e continuar lendo; favoritos, nota e a primeira prateleira; duas prateleiras. A mesma home aparece em **Presets** do Simple UI, com o nome "Códice". Ela substitui o layout atual: para guardar o seu, salve-o antes como predefinição.

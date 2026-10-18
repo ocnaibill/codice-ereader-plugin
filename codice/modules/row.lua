@@ -170,6 +170,8 @@ local function renderCell(by_key, key, cw, cell_h)
 end
 
 local Row = {}
+Row.redraw = redraw
+Row.plugin = plugin
 
 --- A module for a row of works. `spec`: id, name (in the list of modules), label (over the row) or label(home) -> string, items(home, max) -> cards.
 function Row.make(spec)
