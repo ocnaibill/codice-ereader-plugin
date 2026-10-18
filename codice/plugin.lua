@@ -171,8 +171,20 @@ end
 function Codice:onPaired(url, data)
     self:store():saveSetting("connection", { url = url, username = data.username, token = data.token, token_id = data.tokenId, synced_at = os.time() })
     self:store():flush()
+    -- the first time this reader is connected, the home is the Códice's (once: later it is the person's, and the menu has the entry to redo it)
+    local mounted = false
+    if not self:store():readSetting("home_mounted") then
+        local ok, done = pcall(self.mountHome, self)
+        if ok and done then
+            mounted = true
+            self:store():saveSetting("home_mounted", true)
+            self:store():flush()
+        elseif not ok then
+            logger.warn("codice: mounting the home failed:", done)
+        end
+    end
     if self:applyConfig(data.config) then
-        self:say("Conectado ao Códice como " .. tostring(data.username) .. ".\nO catálogo e a sincronização já estão configurados. Se você já abriu um livro nesta sessão, reinicie o KOReader uma vez.")
+        self:say((mounted and "A home do Códice foi montada.\n" or "") .. "Conectado ao Códice como " .. tostring(data.username) .. ".\nO catálogo e a sincronização já estão configurados. Se você já abriu um livro nesta sessão, reinicie o KOReader uma vez.")
     end
 end
 
@@ -487,25 +499,29 @@ function Codice:addToMainMenu(menu_items)
     }
 end
 
---- Puts the ready-made home in the place of the one of the Simple UI (after asking: it replaces the layout of the home, and what was there is lost
---- unless the person saved it as a preset of the Simple UI).
+--- Puts the ready-made home in the place of the layout of the home of the Simple UI. True when it was done.
+function Codice:mountHome()
+    local Presets = require("features/sui_presets")
+    return require("infra/sui_core").applyPresetWithNotice(function()
+        local applied = Presets.applyBuiltin(core.PRESET_ID)
+        if applied then require("infra/sui_store"):set("simpleui_hs_active_preset", core.PRESET_ID) end
+        return applied
+    end, function()
+        local HS = package.loaded["screens/sui_homescreen"]
+        if HS and HS.rebuildLayout then HS.rebuildLayout() end
+        local SE = package.loaded["engines/sui_screen_engine"]
+        if SE and SE.refreshAllLiveImmediate then SE.refreshAllLiveImmediate(true) end
+    end)
+end
+
+--- The menu entry: asks first, since it replaces the layout of the home, and what was there is lost unless the person saved it as a preset of
+--- the Simple UI.
 function Codice:applyHomePreset()
     UIManager:show(ConfirmBox:new{
         text = "Montar a home do Códice?\n\nIsso troca os módulos da home do Simple UI por uma página com saudação, números e continuar lendo.\n\nPara guardar a home atual, salve-a antes como predefinição no Simple UI.",
         ok_text = "Montar",
         ok_callback = guarded("montar a home", function()
-            local Presets = require("features/sui_presets")
-            local ok = require("infra/sui_core").applyPresetWithNotice(function()
-                local applied = Presets.applyBuiltin(core.PRESET_ID)
-                if applied then require("infra/sui_store"):set("simpleui_hs_active_preset", core.PRESET_ID) end
-                return applied
-            end, function()
-                local HS = package.loaded["screens/sui_homescreen"]
-                if HS and HS.rebuildLayout then HS.rebuildLayout() end
-                local SE = package.loaded["engines/sui_screen_engine"]
-                if SE and SE.refreshAllLiveImmediate then SE.refreshAllLiveImmediate(true) end
-            end)
-            if not ok then self:say("Não consegui montar a home.") end
+            if not self:mountHome() then self:say("Não consegui montar a home.") end
         end),
     })
 end
