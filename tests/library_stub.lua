@@ -396,5 +396,15 @@ answers["/device/works"] = { data = { data = { { id = 1, title = "Duna", author 
 local few = Library:new{ plugin = plugin, start = { kind = "works", spec = { favorite = true, title = "Favoritos" }, page = 1 }, action_id = "codice_favorites" }
 check(few.model.total == 1, "o total da lista vai no modelo")
 
+-- with the bars of the Simple UI around it the content sits below the status bar, and the taps and the redraw must reach the end of it: the foot (the
+-- buttons and the counter of the pages) was outside, and no tap reached it
+local sui = package.loaded["infra/sui_core"]
+sui.getContentTop = function() return 81 end
+sui.getContentHeight = function() return 1339 end
+local barred = Library:new{ plugin = plugin, start = { kind = "works", spec = { favorite = true, title = "Favoritos" }, page = 1 }, _navbar_injected = true }
+check(barred.dimen.y == 0 and barred.dimen.h == 81 + 1339, "a área do widget vai até o fim do conteúdo, abaixo da barra de status")
+barred:place(120, 1300)
+check(barred.dimen.y == 0 and barred.dimen.h == 1420, "e acompanha a mudança quando as barras chegam")
+
 print(string.format("%d verificações da biblioteca, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)
