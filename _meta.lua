@@ -6,6 +6,6 @@ return {
     name        = "simpleui",
     fullname    = "Códice",
     description = "O Códice no seu leitor: conecta a sua instância por um código, mantém o catálogo e o progresso em dia, e a interface do Simple UI.",
-    version     = "0.4.2",
+    version     = "0.4.4",
     author      = "Códice (based on Simple UI by Doctor Hetfield)",
 }

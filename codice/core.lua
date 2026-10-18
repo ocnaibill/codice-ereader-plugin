@@ -6,8 +6,12 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.4.2"
+M.PLUGIN_VERSION = "0.4.4"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
+-- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
+-- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
+-- module (it did: a tap on a book found the plugin of the Simple UI and called a method it does not have).
+M.MODULE_SLOT = "codice_module"
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
 local function trim(s)
@@ -215,6 +219,13 @@ function M.pluginDirFromSource(source, cwd)
         dir = dir == "." and base or (base .. "/" .. dir)
     end
     return dir
+end
+
+--- The first line of an error message (the rest is the traceback), to show a person.
+function M.firstLine(err)
+    local line = tostring(err or ""):match("^[^\n]*") or ""
+    if #line > 240 then line = line:sub(1, 240) .. "…" end
+    return line
 end
 
 -- ---------------------------------------------------------------- files
