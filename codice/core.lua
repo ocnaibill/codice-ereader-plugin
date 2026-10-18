@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.4.4"
+M.PLUGIN_VERSION = "0.5.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -202,6 +202,12 @@ function M.sameRows(a, b)
                 parts[#parts + 1] = table.concat({ row, tostring(c.id), tostring(c.title), tostring(c.percent), tostring(c.cover), tostring(c.fileId) }, "|")
             end
         end
+        for n, shelf in ipairs(type(home) == "table" and type(home.shelves) == "table" and home.shelves or {}) do
+            parts[#parts + 1] = "shelf|" .. n .. "|" .. tostring(shelf.id) .. "|" .. tostring(shelf.title) .. "|" .. tostring(shelf.total)
+            for _, c in ipairs(type(shelf.works) == "table" and shelf.works or {}) do
+                parts[#parts + 1] = table.concat({ "s" .. n, tostring(c.id), tostring(c.title), tostring(c.percent), tostring(c.cover) }, "|")
+            end
+        end
         return table.concat(parts, "\n")
     end
     return sig(a) == sig(b)
@@ -226,6 +232,37 @@ function M.firstLine(err)
     local line = tostring(err or ""):match("^[^\n]*") or ""
     if #line > 240 then line = line:sub(1, 240) .. "…" end
     return line
+end
+
+--- How many shelves (categories of the home) have a module of their own.
+M.SHELF_SLOTS = 6
+
+--- The works of shelf number `n` of the home, the way homeItems gives a row (each with its `key`), at most `max`. Keys carry the shelf id, so
+--- that the same work on two shelves is two different cells.
+function M.shelfItems(home, n, max)
+    local out = {}
+    local shelf = type(home) == "table" and type(home.shelves) == "table" and home.shelves[n] or nil
+    if type(shelf) ~= "table" or type(shelf.works) ~= "table" then return out end
+    for _, card in ipairs(shelf.works) do
+        if #out >= (max or 5) then break end
+        if type(card) == "table" and card.id then
+            local item = {}
+            for k, v in pairs(card) do item[k] = v end
+            item.key = "codice:s" .. tostring(shelf.id or n) .. ":" .. tostring(card.id)
+            out[#out + 1] = item
+        end
+    end
+    return out
+end
+
+--- The title of shelf number `n` as the home shows it ("Ficção (40)" when there are more works than the shelf holds), or nil when there is no
+--- such shelf.
+function M.shelfLabel(home, n)
+    local shelf = type(home) == "table" and type(home.shelves) == "table" and home.shelves[n] or nil
+    if type(shelf) ~= "table" or not shelf.title then return nil end
+    local shown = type(shelf.works) == "table" and #shelf.works or 0
+    if tonumber(shelf.total) and shelf.total > shown then return shelf.title .. " (" .. shelf.total .. ")" end
+    return shelf.title
 end
 
 -- ---------------------------------------------------------------- files
