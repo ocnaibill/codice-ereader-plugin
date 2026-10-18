@@ -164,5 +164,22 @@ for _, bad in ipairs({ "", "/etc/passwd", "../fora.lua", "a/../../b.lua", "a/./b
 end
 eq(core.safeRelPath(nil), nil, "sem caminho")
 
+-- as linhas da home para a grade do Simple UI
+local items = core.homeItems({ continue = { { id = 1, title = "A" }, { title = "sem id" }, { id = 2, title = "B", percent = 40 }, { id = 3 } } }, "continue", 2)
+eq(#items, 2, "no máximo 2")
+eq(items[1].key, "codice:1", "chave da grade")
+eq(items[2].key, "codice:2", "pula quem não tem id")
+eq(items[2].percent, 40, "os dados do cartão seguem")
+eq(#core.homeItems(nil, "continue", 5), 0, "sem home")
+eq(#core.homeItems({ continue = {} }, "favorites", 5), 0, "linha que não existe")
+eq(#core.homeItems({ continue = { { id = 1 }, { id = 2 }, { id = 3 } } }, "continue"), 3, "padrão 5")
+local a = { continue = { { id = 1, title = "A", percent = 10, cover = "/c/1" } }, user = { name = "Ana" } }
+local b = { continue = { { id = 1, title = "A", percent = 10, cover = "/c/1" } }, user = { name = "Outra" } }
+eq(core.sameRows(a, b), true, "o nome não conta")
+b.continue[1].percent = 11
+eq(core.sameRows(a, b), false, "o progresso conta")
+eq(core.sameRows(nil, nil), true, "duas homes vazias")
+eq(core.sameRows(a, nil), false, "uma com cartões, outra sem")
+
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.4.0"
+M.PLUGIN_VERSION = "0.4.1"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 M.SERVER_TITLE = "Códice" -- the title of the entry in the OPDS catalogs of KOReader: the one this plugin owns
 
@@ -169,6 +169,38 @@ function M.lines(cards, per_line, limit)
     end
     if #line > 0 then out[#out + 1] = line end
     return out
+end
+
+--- The books of a row of the home (`rows` is "continue", "favorites"...), at most `max`, each with a `key` the grid of the Simple UI keeps it
+--- by ("codice:12"). Cards with no id are left out. `home` is the answer of GET /device/home (or its copy kept).
+function M.homeItems(home, row, max)
+    local out = {}
+    if type(home) ~= "table" or type(home[row]) ~= "table" then return out end
+    for _, card in ipairs(home[row]) do
+        if #out >= (max or 5) then break end
+        if type(card) == "table" and card.id then
+            local item = {}
+            for k, v in pairs(card) do item[k] = v end
+            item.key = "codice:" .. tostring(card.id)
+            out[#out + 1] = item
+        end
+    end
+    return out
+end
+
+--- Whether two answers of the home are the same thing (so that the screen is drawn again only when something changed): the cards of every
+--- row, by id, title, percent and cover. The greeting and the numbers do not count here.
+function M.sameRows(a, b)
+    local function sig(home)
+        local parts = {}
+        for _, row in ipairs({ "continue", "favorites" }) do
+            for _, c in ipairs(type(home) == "table" and type(home[row]) == "table" and home[row] or {}) do
+                parts[#parts + 1] = table.concat({ row, tostring(c.id), tostring(c.title), tostring(c.percent), tostring(c.cover), tostring(c.fileId) }, "|")
+            end
+        end
+        return table.concat(parts, "\n")
+    end
+    return sig(a) == sig(b)
 end
 
 -- ---------------------------------------------------------------- files

@@ -32,6 +32,16 @@ Tocar numa capa abre o livro: **Ler**/**Continuar**. Se a obra tem mais de um ar
 
 **Livro novo no aparelho:** se você abre um livro que o servidor já tem lido por este mesmo Kindle e a cópia do aparelho está no começo (um download novo), o plugin pergunta "Continuar de onde parou?". Sem isso, o KOReader não pergunta e a próxima virada de página mandaria "o começo" por cima do seu progresso.
 
+## Módulos do Códice na tela inicial do Simple UI
+
+Os módulos do Códice entram na home do Simple UI como os dele (sem mudar nada do código dele). Para pôr um na tela: **Configurações do Simple UI → Tela Inicial → Adicionar Módulo** e escolha o do Códice.
+
+| Módulo | O que mostra |
+|---|---|
+| **Códice: Continuar lendo** | os livros que você está lendo no Códice, com capa, progresso e título; tocar numa obra a abre (baixando o arquivo, se ele ainda não está no aparelho, e perguntando qual quando há mais de um) |
+
+Os dados vêm da última home que o servidor mandou, guardada no aparelho: a tela aparece na hora, sem rede, e se atualiza sozinha quando o Wi-Fi já está ligado (nunca pede Wi-Fi). As capas chegam depois, algumas por vez. Quantas colunas e linhas, o tamanho do texto e o resto da aparência são as configurações de módulo do próprio Simple UI.
+
 ## Atualizar o plugin
 
 **Códice → Procurar atualização do plugin** (e, quando o Wi-Fi volta, no máximo uma vez por semana, um aviso) olha a versão mais nova nos [releases](https://github.com/ocnaibill/codice-ereader-plugin/releases), baixa o zip, confere o SHA-256 publicado e a sintaxe de cada arquivo, coloca a versão nova guardando a atual em `codice.koplugin.old` e pede para reiniciar. **Voltar à versão anterior do plugin** desfaz. Desde a 0.3.1 o zip pode ter pastas (cada caminho é conferido: só nomes simples, até 6 níveis, nunca `..`), e cada arquivo `.lua` de qualquer pasta tem de carregar antes de a versão nova ser posta no lugar. O código baixado é executado pelo KOReader: a confiança é a do dono do repositório e do HTTPS, a mesma do OTA do KOReader.
@@ -57,6 +67,8 @@ luajit tests/run.lua      # a lógica que não precisa do KOReader
 | `codice/core.lua` | endereço, versões, o que cada resposta do servidor significa, o que se escreve no OPDS e no KOSync, caminhos do zip (puro, testado) |
 | `codice/http.lua` | pedidos JSON com os tempos do KOReader |
 | `codice/pairing.lua` | o fluxo na tela: endereço, código, QR, espera da aprovação |
+| `codice/data.lua`, `codice/covers.lua` | a última home do servidor guardada em arquivo e a atualização quieta dela; as capas guardadas em arquivo |
+| `codice/modules/` | os módulos do Códice para a home do Simple UI (registrados em `codice/plugin.lua`, carregados só quando o Simple UI lista os módulos) |
 | `codice/home.lua` | a tela inicial antiga do Códice: coluna que rola, capas que chegam depois, toque numa obra |
 | `codice/update.lua` | a atualização do plugin (download, hash, caminhos, sintaxe, troca, volta atrás) |
 | `codice/plugin.lua` | o módulo do Códice: menu, guardar o acesso, aplicar a configuração, abrir livros, atualizar quando a rede volta; é registrado pelo `main.lua` |
