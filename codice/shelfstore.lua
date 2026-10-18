@@ -98,6 +98,8 @@ function Store.record(conn, card, name)
     work = work or Shelf.workFromCard(card)
     Shelf.noteDownload(idx, work, card.fileId, name, size, os.time())
     Store.save()
+    -- the cover too, so that the library has it with no network
+    if conn and NetworkMgr:isOnline() then pcall(require("codice/covers").fetch, conn, card) end
 end
 
 --- Makes the shelf up to date with the server, if there is a network and it has been a while: what the server says about the works that are on

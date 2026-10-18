@@ -87,3 +87,13 @@ No menu do Códice, **Montar a home do Códice** troca os módulos da home do Si
 ### A prateleira (o que o leitor guarda dos livros que tem)
 
 Ao baixar um livro, o plugin o põe numa **prateleira** local (`settings/codice_shelf.json`): título, autores, categorias, série, arquivos, favorito e quanto você leu. Ela é conferida contra os arquivos que existem (um livro apagado pelo explorador some dela) e atualizada com o servidor sempre que há rede (ao abrir a home com Wi-Fi). É a base da Biblioteca que funciona sem conexão (DEC-198): sem rede, categorias, autores, séries, favoritos e formatos saem dela. Livros baixados antes da prateleira são reconhecidos pelo nome do arquivo (`<id> - título.ext`) e preenchidos pelo servidor na primeira conexão. Precisa do servidor com a rota `GET /device/shelf`.
+
+### A Biblioteca
+
+Em **Códice → Biblioteca** (e como ação "Biblioteca do Códice" para uma aba ou botão do Simple UI) abre a Biblioteca do Códice (DEC-198), uma tela só dela, sem rolagem: uma página de cada vez, virada com um toque no pé da tela ou um deslize.
+- **Raiz:** Categorias, Autores, Séries e coleções, Formatos, No aparelho e Todas as obras; a lupa busca por título e autor.
+- **Lista de obras:** grade de capas 3×2 com a marca ↓ nas obras que estão no aparelho e a barra de progresso; filtros Todas, Baixadas e Lendo; "Ordem" por título, autor ou mais novas.
+- **Ficha da obra:** série, quanto você leu, categorias e os arquivos (idioma e formato; "no aparelho" ou "baixar · tamanho"). **Ler** abre o melhor arquivo (o último lido, senão o principal), baixando se precisar; **Remover do aparelho** apaga só a cópia local, o progresso fica no Códice.
+- **Sem conexão** (Wi-Fi desligado ou servidor fora do ar): uma faixa avisa, e a Biblioteca mostra só o que está no aparelho, com os números do aparelho, lendo da prateleira.
+
+Os testes de tela rodam com um KOReader de mentira (`tests/library_stub.lua`): pegam erro de lógica e de digitação, não provam o desenho no aparelho.
