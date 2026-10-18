@@ -514,6 +514,21 @@ function Codice:mountHome()
     end)
 end
 
+--- The first time the file manager comes up on a reader that is not connected, offers to connect it (once: asking again would be nagging; the
+--- menu has the entry for whoever said "later").
+function Codice:welcome()
+    local FM = package.loaded["apps/filemanager/filemanager"]
+    if not (FM and FM.instance == self.ui) or self:connection() or self:store():readSetting("welcome_shown") then return end
+    self:store():saveSetting("welcome_shown", true)
+    self:store():flush()
+    UIManager:show(ConfirmBox:new{
+        text = "Bem-vindo ao Códice!\n\nPara ler seus livros e manter o progresso em dia, conecte este leitor à sua instância. Você digita o endereço, o leitor mostra um código e você o aprova no site: sem senha para digitar aqui.\n\nSe preferir, faça isso depois em Códice → Conectar.",
+        ok_text = "Conectar agora",
+        cancel_text = "Depois",
+        ok_callback = guarded("conectar", function() Pairing.start(self) end),
+    })
+end
+
 --- The menu entry: asks first, since it replaces the layout of the home, and what was there is lost unless the person saved it as a preset of
 --- the Simple UI.
 function Codice:applyHomePreset()
@@ -593,6 +608,11 @@ function M.install(ui)
     end
     ui:registerModule(core.MODULE_SLOT, instance)
     M.live = instance
+    -- later, so that the screen of the file manager (and the Simple UI's own first-run) is there first
+    UIManager:scheduleIn(6, function()
+        local ok, err = pcall(instance.welcome, instance)
+        if not ok then logger.warn("codice: welcome failed:", err) end
+    end)
     if not M._modules_registered then
         M._modules_registered = true
         -- the modules of the Códice for the home of the Simple UI, by path: the registry loads them only when it lists the modules, so that
