@@ -289,8 +289,7 @@ eq(core.sameRows({ user = { name = "a" } }, { user = { name = "a" } }), true, "m
 -- a home pronta
 local preset = core.homePreset()
 eq(preset.id, core.PRESET_ID, "id da predefinição")
-eq(#preset.layout.pages, 3, "três páginas")
-eq(preset.settings.simpleui_hs_codice_shelf2_grid_cols, 5, "prateleiras com cinco capas por fileira")
+eq(#preset.layout.pages, 1, "uma página")
 local seen, dup = {}, false
 for _, page in ipairs(preset.layout.pages) do
     for _, id in ipairs(page.modules) do
@@ -299,7 +298,7 @@ for _, page in ipairs(preset.layout.pages) do
     end
 end
 eq(dup, false, "nenhum módulo repetido")
-for _, id in ipairs({ "codice_greeting", "codice_stats", "codice_continue", "codice_favorites", "codice_shelf1", "codice_shelf2", "codice_shelf3" }) do
+for _, id in ipairs({ "codice_greeting", "codice_stats", "codice_continue" }) do
     eq(seen[id], true, "a predefinição tem " .. id)
 end
 -- every module of the preset exists as a file, with that id
@@ -312,6 +311,37 @@ for id in pairs(seen) do
         eq(text:find('id%s*=%s*"' .. id .. '"') ~= nil, true, "o módulo " .. id .. " tem esse id")
     end
 end
+
+-- cartão: lido, recorte, arquivo escolhido
+eq(core.readLabel(15), "15% lido", "quinze por cento")
+eq(core.readLabel(15.4), "15% lido", "arredonda para baixo")
+eq(core.readLabel(15.6), "16% lido", "arredonda para cima")
+eq(core.readLabel(0.2), "1% lido", "um pouco lido nunca é zero")
+eq(core.readLabel(0), "", "nada lido")
+eq(core.readLabel(nil), "", "sem número")
+eq(core.readLabel(130), "100% lido", "no máximo cem")
+local crop = core.coverCrop(200, 400, 100, 150)
+eq(crop.w, 100, "mais fina que a caixa: ocupa a largura") ; eq(crop.h, 200, "e corta em cima e embaixo"); eq(crop.y, 25, "corte igual dos dois lados"); eq(crop.x, 0, "sem corte lateral")
+crop = core.coverCrop(300, 300, 100, 150)
+eq(crop.h, 150, "mais larga que a caixa: ocupa a altura"); eq(crop.w, 150, "e corta dos lados"); eq(crop.x, 25, "corte lateral igual")
+crop = core.coverCrop(200, 300, 100, 150)
+eq(crop.w == 100 and crop.h == 150 and crop.x == 0 and crop.y == 0, true, "mesma proporção: sem corte")
+local withFile = core.withFile({ id = 5, title = "T", cover = "/c/5", percent = 12, fileId = 1, format = "pdf" }, { id = 9, format = "epub" })
+eq(withFile.fileId, 9, "o arquivo escolhido"); eq(withFile.format, "epub", "o formato dele"); eq(withFile.cover, "/c/5", "a capa continua"); eq(withFile.percent, 12, "o progresso continua")
+local base = { user = { name = "a" }, continue = { { id = 1, title = "A", percent = 10, cover = "/c/1", key = "codice:1" }, { id = 2, title = "B", percent = 50 }, { id = 3, title = "C", percent = 70 } } }
+local h2, changed = core.touchContinue(base, { id = 3, title = "C", fileId = 30 }, 75)
+eq(changed, true, "mudou")
+eq(h2.continue[1].id, 3, "o último lido vai para a frente"); eq(h2.continue[1].percent, 75, "com o novo percentual"); eq(h2.continue[2].id, 1, "os outros mantêm a ordem"); eq(h2.continue[3].id, 2, "e o resto")
+eq(#h2.continue, 3, "ninguém some nem se repete"); eq(h2.user.name, "a", "o resto da home continua")
+eq(base.continue[1].id, 1, "a home original não foi alterada")
+eq(h2.continue[1].fileId, 30, "o arquivo aberto vem junto")
+local h3 = core.touchContinue(base, { id = 9, title = "Novo", cover = "/c/9" }, 4)
+eq(h3.continue[1].id, 9, "uma obra que começou entra na frente"); eq(h3.continue[1].cover, "/c/9", "com a capa"); eq(#h3.continue, 4, "e a lista cresce")
+local h4, ch4 = core.touchContinue(base, { id = 9, title = "Novo" }, 0)
+eq(ch4, false, "abrir sem ler não entra"); eq(#h4.continue, 3, "a lista fica")
+local h5 = core.touchContinue(base, { id = 2, title = "B" }, nil)
+eq(h5.continue[1].id, 2, "sem percentual, só sobe"); eq(h5.continue[1].percent, 50, "mantém o que tinha")
+eq(select(2, core.touchContinue(nil, { id = 1 }, 5)), false, "sem home")
 
 print(string.format("%d verificações, %d falhas", count, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -38,8 +38,8 @@ Os módulos do Códice entram na home do Simple UI como os dele (sem mudar nada 
 
 | Módulo | O que mostra |
 |---|---|
-| **Códice: Continuar lendo** | os livros que você está lendo no Códice, com capa, progresso e título; tocar numa obra a abre (baixando o arquivo, se ele ainda não está no aparelho, e perguntando qual quando há mais de um) |
-| **Códice: Favoritos** | as obras que você marcou como favoritas no Códice; funciona como o Continuar lendo |
+| **Códice: Continuar lendo** | os livros que você está lendo no Códice: a capa e, embaixo, quanto já leu ("15% lido"). Quando você fecha um livro, ele vai para a frente da lista na hora, sem esperar o servidor; tocar numa obra a abre (baixando o arquivo, se ele ainda não está no aparelho, e perguntando qual quando há mais de um) |
+| **Códice: Favoritos** | as obras que você marcou como favoritas no Códice; capa, barra de progresso e título |
 | **Códice: Saudação** | "Bom dia, nome :)" e "O que queremos hoje?", como o topo da home da web, com o dia da semana e a data no fim da segunda linha (a hora está na barra do KOReader) |
 | **Códice: Em andamento e atividade** | dois cartões lado a lado: quantas obras você está lendo (e de que formatos) e o que fez: obras completas no mês e tempo de leitura |
 | **Códice: Nota aleatória** | uma nota ou destaque seu, sorteado entre os que o servidor manda; a escolha dura uns 10 minutos. Tocar nela abre a obra |
@@ -82,4 +82,4 @@ luajit tests/run.lua      # a lógica que não precisa do KOReader
 
 ### A home pronta
 
-No menu do Códice, **Montar a home do Códice** troca os módulos da home do Simple UI por uma home já montada, em três páginas: saudação, números e continuar lendo; favoritos e a primeira prateleira; duas prateleiras (favoritos e prateleiras com cinco capas por fileira, para caberem). A mesma home aparece em **Presets** do Simple UI, com o nome "Códice". Ela substitui o layout atual: para guardar o seu, salve-o antes como predefinição.
+No menu do Códice, **Montar a home do Códice** troca os módulos da home do Simple UI por uma home já montada, numa página: saudação, números e continuar lendo. Favoritos e prateleiras seguem como módulos, para adicionar se quiser; o lugar deles é a tela da biblioteca. A mesma home aparece em **Presets** do Simple UI, com o nome "Códice". Ela substitui o layout atual: para guardar o seu, salve-o antes como predefinição.
