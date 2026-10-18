@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.12.0"
+M.PLUGIN_VERSION = "0.13.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -498,6 +498,23 @@ function M.agoText(seconds)
     return string.format("há %d dias", days)
 end
 
+--- The words of a page as a passage to put in a question: spaces collapsed, cut at a word at most `limit` characters long, with an ellipsis when it was cut.
+function M.passage(text, limit)
+    limit = limit or 200
+    text = tostring(text or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+    if #text <= limit then return text end
+    local cut = text:sub(1, limit)
+    -- not in the middle of a letter that takes more than one byte
+    while #cut > 0 and cut:byte(#cut) >= 0x80 and cut:byte(#cut) < 0xC0 do cut = cut:sub(1, #cut - 1) end
+    if cut:byte(#cut) and cut:byte(#cut) >= 0xC0 then cut = cut:sub(1, #cut - 1) end
+    -- at the end of a word: if the cut fell in the middle of one, back to the space before it
+    if not text:sub(#cut + 1, #cut + 1):match("%s") then
+        local at = cut:match("^.*()%s")
+        if at and at > limit * 0.6 then cut = cut:sub(1, at - 1) end
+    end
+    return cut .. "…"
+end
+
 --- The id of the file of a book that was downloaded to the reader ("123 - Título.epub"), or nil for any other name.
 function M.fileIdOfPath(path)
     local name = tostring(path or ""):match("([^/]+)$") or ""
@@ -520,7 +537,7 @@ function M.placeQuestion(here, remote, web, device_name, now)
     local forward = there > (here.percent or 0)
     local there_n, here_n = math.floor(there + 0.5), math.floor((here.percent or 0) + 0.5)
     return {
-        here = { who = "Neste leitor", percent = here_n, chapter = here.chapter },
+        here = { who = "Neste leitor", percent = here_n, chapter = here.chapter, snippet = here.snippet },
         there = { who = who, when = when, percent = there_n, chapter = web and web.chapter or nil, snippet = web and web.snippet or nil },
         gap = math.floor(diff + 0.5),
         forward = forward,
