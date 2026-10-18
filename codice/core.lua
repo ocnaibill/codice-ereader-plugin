@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.11.0"
+M.PLUGIN_VERSION = "0.12.0"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -98,7 +98,7 @@ end
 
 local KOSYNC_DEFAULTS = {
     auto_sync = true,
-    sync_forward = 1, -- ask
+    sync_forward = 3, -- KOSync does not ask by itself: the Códice asks (codice/conflict.lua), with both places in words
     sync_backward = 3, -- do not
     checksum_method = 0, -- the binary one: what the Códice calculates
     send_metadata = false,
@@ -114,6 +114,8 @@ function M.applyKosync(settings, cfg, username, key)
     for k, v in pairs(KOSYNC_DEFAULTS) do
         if settings[k] == nil then settings[k] = v end
     end
+    -- the generic question of KOSync ("Sync to latest location?") gives way to ours; a person who chose to sync silently keeps that
+    if settings.sync_forward == 1 then settings.sync_forward = KOSYNC_DEFAULTS.sync_forward end
     return settings
 end
 
@@ -481,6 +483,50 @@ function M.libraryTab(id)
         if t.id == id then return t end
     end
     return nil
+end
+
+-- ---------------------------------------------------------------- where the person is, here and elsewhere (DEC-196)
+
+--- "agora há pouco", "há 20 min", "há 3h", "ontem", "há 5 dias": how long ago, from a number of seconds.
+function M.agoText(seconds)
+    seconds = tonumber(seconds) or 0
+    if seconds < 90 then return "agora há pouco" end
+    if seconds < 3600 then return string.format("há %d min", math.floor(seconds / 60 + 0.5)) end
+    if seconds < 86400 then return string.format("há %dh", math.floor(seconds / 3600)) end
+    local days = math.floor(seconds / 86400)
+    if days < 2 then return "ontem" end
+    return string.format("há %d dias", days)
+end
+
+--- The id of the file of a book that was downloaded to the reader ("123 - Título.epub"), or nil for any other name.
+function M.fileIdOfPath(path)
+    local name = tostring(path or ""):match("([^/]+)$") or ""
+    return tonumber(name:match("^(%d+) %- "))
+end
+
+--- The question that is asked when another place of the book (the web's, another reader's) is not the one of this reader, or nil when they are
+--- the same for all that matters (less than a point apart). `here` is `{ percent (0-100), chapter }`; `remote` is what KOSync keeps
+--- (`{ percentage (0-1), device, timestamp }`); `web`, when it could be had, is the place in words (`{ percent, device, chapter, snippet }`,
+--- GET /device/progress/files/{id}/compare). `device_name` is how this reader calls itself; `now` is the time.
+function M.placeQuestion(here, remote, web, device_name, now)
+    if type(remote) ~= "table" or not tonumber(remote.percentage) then return nil end
+    local there = remote.percentage * 100
+    local diff = math.abs(there - (here.percent or 0))
+    if diff < 1 then return nil end
+    local who = (web and web.device) or remote.device or "outro aparelho"
+    if who == "Web" then who = "Na web" elseif who == device_name then who = "Neste leitor" else who = "No " .. who end
+    local when
+    if tonumber(remote.timestamp) and now then when = M.agoText(now - remote.timestamp) end
+    local forward = there > (here.percent or 0)
+    local there_n, here_n = math.floor(there + 0.5), math.floor((here.percent or 0) + 0.5)
+    return {
+        here = { who = "Neste leitor", percent = here_n, chapter = here.chapter },
+        there = { who = who, when = when, percent = there_n, chapter = web and web.chapter or nil, snippet = web and web.snippet or nil },
+        gap = math.floor(diff + 0.5),
+        forward = forward,
+        go_text = (forward and "Avançar" or "Voltar") .. " para " .. there_n .. "% (" .. (who == "Na web" and "web" or who:gsub("^No ", "")) .. ")",
+        stay_text = "Permanecer em " .. here_n .. "% (aqui)",
+    }
 end
 
 -- ---------------------------------------------------------------- files

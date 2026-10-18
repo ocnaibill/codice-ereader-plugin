@@ -419,35 +419,49 @@ function Codice:_chooseAndOpen(card, before)
     end))
 end
 
---- A book opened on this reader for the first time starts at the first page, and KOSync says nothing when the place the server has was
---- written by this very reader (it takes the new copy for the one it already knows): the next page turn would then send "the start" over
---- the real place. So, when the copy is at the start and the server has this reader far on, the person is asked.
-function Codice:checkFreshCopy()
+--- The place of the book here against the one the Códice has (DEC-196): when they are not the same (the web, or another reader, went on or went
+--- back), the person is asked, with both places in words. This takes the place of the generic question of KOSync (turned off in its settings).
+--- It also covers a copy of the book that was just downloaded: it starts at the first page, and the place the server has may be this very
+--- reader's (KOSync takes that for known), so the next page turn would send "the start" over the real place.
+function Codice:checkPlace()
     local ui = self.ui
     local kosync = ui.kosync
     if not (ui.document and kosync and kosync.settings) then return end
     local s = kosync.settings
     if not (s.custom_server and s.username and s.userkey) or not NetworkMgr:isOnline() then return end
-    local here = kosync:getLastPercent() or 0
-    if here > 0.01 then return end
     local code, body = api.request(s.custom_server .. "/syncs/progress/" .. kosync:getDocumentDigest(), {
         headers = { ["x-auth-user"] = s.username, ["x-auth-key"] = s.userkey, ["Accept"] = "application/vnd.koreader.v1+json" } })
     if code ~= 200 or type(body) ~= "table" or not body.percentage or not body.progress then return end
-    -- a place written by another device is KOSync's to ask about; this is the case it lets pass
-    if body.device_id ~= kosync.device_id or body.percentage < 0.02 then return end
-    UIManager:show(ConfirmBox:new{
-        text = string.format("Você parou em %d%% neste livro.\n\nContinuar de onde parou?", math.floor(body.percentage * 100 + 0.5)),
-        ok_text = "Continuar",
-        cancel_text = "Do começo",
-        ok_callback = function() kosync:syncToProgress(body.progress) end,
+    local here = (kosync:getLastPercent() or 0) * 100
+    local mine = body.device_id == kosync.device_id
+    -- the last place this very reader wrote is its own: nothing to ask, unless the copy is new (at the start)
+    if mine and here > 1 then return end
+    -- the place elsewhere in words (chapter, passage), when the server can say it
+    local web
+    local fileId = core.fileIdOfPath(ui.document.file)
+    local c = self:connection()
+    if fileId and c then
+        local ccode, cmp = api.request(c.url .. "/device/progress/files/" .. fileId .. "/compare", { user = c.username, password = c.token })
+        if ccode == 200 and type(cmp) == "table" and type(cmp.web) == "table" then web = cmp.web end
+    end
+    local chapter
+    if ui.toc and ui.toc.getTocTitleOfCurrentPage then
+        local ok, title = pcall(ui.toc.getTocTitleOfCurrentPage, ui.toc)
+        if ok and type(title) == "string" and title ~= "" then chapter = title end
+    end
+    local question = core.placeQuestion({ percent = here, chapter = chapter }, body, web, mine and body.device or "", os.time())
+    if not question then return end
+    UIManager:show(require("codice/conflict"):new{
+        question = question,
+        on_go = guarded("ir para o outro lugar", function() kosync:syncToProgress(body.progress) end),
     })
 end
 
 function Codice:onReaderReady()
     if not (self.ui.kosync and self.ui.kosync.settings and self.ui.kosync.settings.auto_sync) then return end
     UIManager:scheduleIn(4, function()
-        local ok, err = pcall(self.checkFreshCopy, self)
-        if not ok then logger.warn("codice: checking a fresh copy failed:", err) end
+        local ok, err = pcall(self.checkPlace, self)
+        if not ok then logger.warn("codice: checking the place failed:", err) end
     end)
 end
 
