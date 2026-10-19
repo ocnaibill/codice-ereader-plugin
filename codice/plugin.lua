@@ -117,20 +117,56 @@ function Codice:applyConfig(cfg)
         local servers = file:readSetting("servers", {})
         if core.upsertOpds(servers, cfg, c.username, c.token) then file:flush() end
     end
-    -- the sync of progress: the plugin of KOSync lives only inside a book, and reads its table at every call
-    local key = md5(c.token)
-    local kosync = self.ui.kosync
-    if kosync and kosync.settings then
-        core.applyKosync(kosync.settings, cfg, c.username, key)
-        kosync.updated = true
-        if kosync.settings_obj then kosync.settings_obj:flush() end
-    else
-        local file = LuaSettings:open(DataStorage:getSettingsDir() .. "/kosync.lua")
-        core.applyKosync(file:readSetting("settings", {}), cfg, c.username, key)
-        file:flush()
-    end
+    -- the sync of progress: see kosyncSettings for where it lives
+    local settings, save = self:kosyncSettings()
+    core.applyKosync(settings, cfg, c.username, md5(c.token))
+    save()
     self:store():saveSetting("features", type(cfg.features) == "table" and cfg.features or {})
     self:store():flush()
+    return true
+end
+
+--- The class of the KOSync plugin, when KOReader has it loaded in this run; nil otherwise.
+local function kosyncClass()
+    local ok, PluginLoader = pcall(require, "pluginloader")
+    if not ok or type(PluginLoader) ~= "table" then return nil end
+    local done, enabled = pcall(PluginLoader.loadPlugins, PluginLoader)
+    if not done or type(enabled) ~= "table" then return nil end
+    for _, plugin in ipairs(enabled) do
+        if plugin.name == "kosync" then return plugin end
+    end
+    return nil
+end
+
+--- The settings of KOSync to change and the way to save them: `settings, save`. KOSync reads its file once per run, into an object of the class that
+--- every book after the first one reuses (and writes back when it is flushed), so changing only the file, outside a book, leaves it with the user
+--- that was there: the next book is synced as them, and the old settings go back over the file. Inside a book it is the instance's table; outside,
+--- that object when the plugin already loaded it; and the file only when it did not.
+function Codice:kosyncSettings()
+    local kosync = self.ui.kosync
+    if kosync and kosync.settings then
+        return kosync.settings, function()
+            kosync.updated = true
+            if kosync.settings_obj then kosync.settings_obj:flush() end
+        end
+    end
+    local class = kosyncClass()
+    local obj = class and class.settings_obj
+    if not obj then obj = LuaSettings:open(DataStorage:getSettingsDir() .. "/kosync.lua") end
+    return obj:readSetting("settings", {}), function() obj:flush() end
+end
+
+--- Puts the sync of progress back on the user this reader is connected as, when something left it on another (an access that was replaced, a file
+--- written outside a book before this was handled): only when its server is this Códice's. Returns whether it changed anything.
+function Codice:healKosync()
+    local c = self:connection()
+    if not c then return false end
+    local settings, save = self:kosyncSettings()
+    local key = md5(c.token)
+    if not core.kosyncIsStale(settings, c.url, c.username, key) then return false end
+    settings.username, settings.userkey = c.username, key
+    save()
+    logger.info("codice: the sync of progress was set for another user; it is " .. c.username .. " again")
     return true
 end
 
@@ -213,15 +249,9 @@ function Codice:disconnect()
             settings.custom_server, settings.username, settings.userkey = nil, nil, nil
         end
     end
-    if self.ui.kosync and self.ui.kosync.settings then
-        clear(self.ui.kosync.settings)
-        self.ui.kosync.updated = true
-        if self.ui.kosync.settings_obj then self.ui.kosync.settings_obj:flush() end
-    else
-        local file = LuaSettings:open(DataStorage:getSettingsDir() .. "/kosync.lua")
-        clear(file:readSetting("settings", {}))
-        file:flush()
-    end
+    local settings, save = self:kosyncSettings()
+    clear(settings)
+    save()
     self:store():delSetting("connection")
     self:store():flush()
     self:say("Este leitor foi desconectado do Códice.\nPara tirar o acesso também no servidor, remova-o em Minha conta → Aplicativos, no site.")
@@ -465,6 +495,7 @@ function Codice:checkPlace()
 end
 
 function Codice:onReaderReady()
+    pcall(self.healKosync, self)
     -- the notes of the book: what is waiting is sent, and what the Códice has is taken in (a little later, so that the book is on the screen first)
     UIManager:scheduleIn(6, function() require("codice/annotations").run(self, self.ui, true) end)
     if not (self.ui.kosync and self.ui.kosync.settings and self.ui.kosync.settings.auto_sync) then return end
@@ -739,6 +770,8 @@ function M.install(ui)
     ui:registerModule(core.MODULE_SLOT, instance)
     M.live = instance
     pcall(function() Store.configure(instance:booksDir()) end)
+    -- before KOSync starts for this screen (the Códice comes first in the order of the plugins): the sync of progress is of the connected user
+    pcall(instance.healKosync, instance)
     -- later, so that the screen of the file manager (and the Simple UI's own first-run) is there first
     UIManager:scheduleIn(6, function()
         local ok, err = pcall(instance.welcome, instance)

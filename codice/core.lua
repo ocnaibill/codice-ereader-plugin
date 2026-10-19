@@ -6,7 +6,7 @@ what is written in the settings of the OPDS and of KOSync. It is here, apart fro
 
 local M = {}
 
-M.PLUGIN_VERSION = "0.14.6"
+M.PLUGIN_VERSION = "0.14.7"
 M.CLIENT = "codice-ereader/" .. M.PLUGIN_VERSION
 -- The name the Códice's module is registered under on the main screens of KOReader (`ui.codice_module`). It must not be "codice": KOReader
 -- registers every plugin under the name of its folder, which is "codice", right after the plugin's init, and that would take the place of the
@@ -117,6 +117,14 @@ function M.applyKosync(settings, cfg, username, key)
     -- the generic question of KOSync ("Sync to latest location?") gives way to ours; a person who chose to sync silently keeps that
     if settings.sync_forward == 1 then settings.sync_forward = KOSYNC_DEFAULTS.sync_forward end
     return settings
+end
+
+--- Whether the sync of progress is set for another user than the one this reader is connected as: its server is this Códice's (`url`) and its user or
+--- its key is not the connected one's. A server the person pointed somewhere else is theirs and is not touched.
+function M.kosyncIsStale(settings, url, username, key)
+    if type(settings) ~= "table" or type(settings.custom_server) ~= "string" or not url or url == "" then return false end
+    if settings.custom_server:find(url, 1, true) ~= 1 then return false end
+    return settings.username ~= username or settings.userkey ~= key
 end
 
 --- Whether a stored configuration is already what the server has: the same ETag.
